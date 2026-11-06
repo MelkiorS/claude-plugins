@@ -28,6 +28,9 @@ plugin updates.
 | Plugin | What it does |
 | --- | --- |
 | [session-successor](plugins/session-successor) | Before a session's context window runs out, it writes a handoff prompt and starts its successor (`name-2`, `name-3`, ...) at max effort; a companion JetBrains plugin opens the successor in a new terminal tab. |
+| [statusline](plugins/statusline) | A compact status line: model, project, git branch with a dirty/clean dot, colour-coded context left and an hourly phrase. Run `/statusline:setup` once after installing. |
+
+Every plugin here is plain bash with no extra tools to install (no `jq`).
 
 ## Layout
 
