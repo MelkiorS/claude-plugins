@@ -42,6 +42,14 @@ input with an `agent_id` is a subagent and is skipped.
 session's context on its next prompt or tool call. The session itself picks the logical stopping
 point and writes the prompt; the hook only tells it what to produce and where.
 
+**Plugins load at session start.** A plugin installed or updated mid-session never reaches sessions
+already running: probed by a marker in the hook, it ran in a session started after the install and
+never in one started before (`claude plugin update` also says "restart required"). Hook *scripts*,
+by contrast, are re-read on every run. Hook runs that print nothing leave no trace in the
+transcript, so the hook marks each session it runs in: `active/<session_id>`. That tells a user
+which sessions are watched, and lets another handoff mechanism stand down exactly where this one
+runs.
+
 **Names.** A name the user set (`-n`, `/rename`) is stored in the transcript as a `custom-title`
 record; auto names only ever appear as `ai-title` records, which change over time. So: custom title
 → strip decoration (`✳ name` → `name`), then `name-2`, or `name-N+1` if it already ends in a number;

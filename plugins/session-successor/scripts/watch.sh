@@ -11,6 +11,9 @@ field() { printf '%s' "$input" | jq -r ".$1 // empty"; }
 sid=$(field session_id)
 transcript=$(field transcript_path)
 [ -n "$sid" ] && [ -f "$transcript" ] || exit 0
+# Marks the session as watched. A session started before the plugin was installed never loads this
+# hook and never appears in active/, which is how to tell it needs a restart.
+mkdir -p "$STATE/active" && : > "$STATE/active/$sid"
 [ -z "$(field agent_id)" ] || exit 0 # subagents never hand off
 [ -e "$STATE/warned/$sid" ] && exit 0
 
