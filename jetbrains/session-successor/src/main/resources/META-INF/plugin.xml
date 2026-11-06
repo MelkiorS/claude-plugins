@@ -1,0 +1,19 @@
+<idea-plugin>
+    <id>session-successor</id>
+    <name>Session Successor</name>
+    <vendor>Andy V</vendor>
+    <description><![CDATA[
+        Companion to the <b>session-successor</b> Claude Code plugin. When a Claude Code session
+        hands off to its successor, this plugin opens a new terminal tab in the matching project
+        window and runs <code>claude attach &lt;successor&gt;</code> in it, with no action from you.
+        It watches <code>~/.claude/session-successor/inbox</code>; a note carries only a session
+        name, never a command.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="dev.andy.sessionsuccessor.InboxWatcher"/>
+    </extensions>
+</idea-plugin>

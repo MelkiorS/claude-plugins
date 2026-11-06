@@ -1,0 +1,48 @@
+{
+  "name": "session-successor",
+  "version": "0.1.0",
+  "description": "When a session runs low on context it stops at a logical point, writes a handoff prompt, starts its successor (name-2, name-3, ...) at max effort and tells its peer sessions the new name. With the companion JetBrains plugin the successor opens in a new terminal tab.",
+  "author": {
+    "name": "Andy V"
+  },
+  "license": "MIT",
+  "keywords": [
+    "context",
+    "handoff",
+    "sessions",
+    "jetbrains",
+    "webstorm"
+  ],
+  "userConfig": {
+    "threshold": {
+      "type": "number",
+      "title": "Hand off below (% context left)",
+      "description": "The session hands off once less than this share of its context window remains.",
+      "default": 20,
+      "min": 1,
+      "max": 99
+    },
+    "effort": {
+      "type": "string",
+      "title": "Successor effort",
+      "description": "Effort level the successor session starts with.",
+      "default": "max",
+      "options": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    "context_window": {
+      "type": "number",
+      "title": "Context window (tokens)",
+      "description": "Size of your model's context window, used to compute how much is left.",
+      "default": 1000000,
+      "min": 100000
+    }
+  },
+  "homepage": "https://github.com/MelkiorS/claude-plugins/tree/main/plugins/session-successor",
+  "repository": "https://github.com/MelkiorS/claude-plugins"
+}

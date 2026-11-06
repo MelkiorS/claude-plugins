@@ -1,0 +1,77 @@
+#!/bin/bash
+# successor name  <transcript_path> <cwd>          -> prints the successor's name
+# successor start --name N --cwd DIR --prompt FILE -> starts the successor in the background and
+#                                                     leaves a note for the JetBrains plugin
+set -euo pipefail
+STATE="$HOME/.claude/session-successor"
+INBOX="$STATE/inbox"
+SAFE_NAME='^[A-Za-z0-9._-]{1,64}$'
+
+taken_names() { claude agents --json 2>/dev/null | jq -r '.[].name // empty'; }
+
+next_free() { # $1 = base, $2 = first number to try
+  local base=$1 n=$2 taken
+  taken=$(taken_names)
+  while grep -qxF -- "$base-$n" <<<"$taken"; do n=$((n + 1)); done
+  echo "$base-$n"
+}
+
+cmd_name() {
+  local transcript=$1 cwd=$2 custom base n
+  # A name the user set (-n / /rename) is a custom-title record; auto names are ai-title only.
+  custom=$(grep -hoE '"type":"custom-title","customTitle":"[^"]*"' "$transcript" 2>/dev/null \
+    | tail -1 | sed -E 's/.*"customTitle":"([^"]*)"/\1/' || true)
+  # Titles can carry decoration (e.g. "✳ name"): keep only [A-Za-z0-9._-], spaces become dashes.
+  custom=$(printf '%s' "$custom" | LC_ALL=C sed -E 's/[[:space:]]+/-/g; s/[^A-Za-z0-9._-]//g; s/^[-.]+//; s/-+$//' | cut -c1-60)
+  if [ -n "$custom" ]; then
+    if [[ $custom =~ ^(.*)-([0-9]+)$ ]]; then
+      base=${BASH_REMATCH[1]}; n=$((BASH_REMATCH[2] + 1))
+    else
+      base=$custom; n=2
+    fi
+  else
+    local branch
+    # Empty outside a repo and on a detached HEAD; works on a branch with no commits yet.
+    branch=$(git -C "$cwd" symbolic-ref --short -q HEAD 2>/dev/null || true)
+    base=$(printf '%s' "$(basename "$cwd")${branch:+-$branch}" | LC_ALL=C sed -E 's/[^A-Za-z0-9._-]+/-/g' | cut -c1-60)
+    n=1
+  fi
+  next_free "$base" "$n"
+}
+
+cmd_start() {
+  local name="" cwd="" prompt=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --name) name=$2; shift 2 ;;
+      --cwd) cwd=$2; shift 2 ;;
+      --prompt) prompt=$2; shift 2 ;;
+      *) echo "unknown arg $1" >&2; exit 2 ;;
+    esac
+  done
+  [[ $name =~ $SAFE_NAME ]] || { echo "bad name: $name" >&2; exit 2; }
+  [ -d "$cwd" ] || { echo "no such dir: $cwd" >&2; exit 2; }
+  [ -s "$prompt" ] || { echo "empty or missing prompt file: $prompt" >&2; exit 2; }
+
+  (cd "$cwd" && claude --bg --effort "${CLAUDE_PLUGIN_OPTION_EFFORT:-max}" -n "$name" "$(cat "$prompt")") >&2
+
+  # The successor's pid lets the IDE skip a note whose session has gone (a reboot, a stopped session).
+  local pid="" _
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pid=$(claude agents --json 2>/dev/null | jq -r --arg n "$name" 'first(.[] | select(.name == $n) | .pid // empty)') || pid=""
+    [ -n "$pid" ] && break
+    sleep 0.5
+  done
+
+  mkdir -p "$INBOX" && chmod 700 "$STATE" "$INBOX"
+  jq -n --arg name "$name" --arg cwd "$cwd" --arg pid "$pid" \
+    '{name: $name, cwd: $cwd} + (if $pid == "" then {} else {pid: ($pid | tonumber)} end)' > "$INBOX/.$name.tmp"
+  mv "$INBOX/.$name.tmp" "$INBOX/$name.json"
+  echo "$name"
+}
+
+case ${1:-} in
+  name) shift; cmd_name "$@" ;;
+  start) shift; cmd_start "$@" ;;
+  *) echo "usage: successor name <transcript> <cwd> | start --name N --cwd DIR --prompt FILE" >&2; exit 2 ;;
+esac
