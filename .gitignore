@@ -3,3 +3,5 @@ jetbrains/*/.gradle/
 jetbrains/*/.intellijPlatform/
 jetbrains/*/.kotlin/
 jetbrains/*/build/
+# Local screenshots and notes
+/doc/
