@@ -1,0 +1,5 @@
+# Unix start scripts need LF, Windows scripts need CRLF; jars are binary.
+gradlew  text eol=lf
+*.sh     text eol=lf
+*.bat    text eol=crlf
+*.jar    binary

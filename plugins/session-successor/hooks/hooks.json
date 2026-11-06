@@ -1,0 +1,20 @@
+{
+  "description": "Watch remaining context; below the threshold, tell the session to hand off to a successor.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/watch.sh\"", "timeout": 30 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/watch.sh\"", "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}

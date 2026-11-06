@@ -1,0 +1,5 @@
+.idea/
+jetbrains/*/.gradle/
+jetbrains/*/.intellijPlatform/
+jetbrains/*/.kotlin/
+jetbrains/*/build/
