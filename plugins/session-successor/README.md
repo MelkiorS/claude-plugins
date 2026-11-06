@@ -26,7 +26,7 @@ The Claude Code plugin works alone; without the JetBrains plugin you attach your
 ## Install
 
 **Requirements:** Claude Code with background sessions (`claude --bg`, `claude attach`; tested
-with 2.1.318), `bash`, `jq`, `git`. Tested on Linux; macOS should work but is untested.
+with 2.1.318), `bash` and `git`; no `jq` needed. Tested on Linux; macOS should work but is untested.
 JetBrains plugin: any JetBrains IDE **2026.2+** with the bundled Terminal plugin (WebStorm,
 IntelliJ IDEA, PyCharm, ...).
 

@@ -6,8 +6,10 @@ threshold=${CLAUDE_PLUGIN_OPTION_THRESHOLD:-20}
 window=${CLAUDE_PLUGIN_OPTION_CONTEXT_WINDOW:-1000000}
 STATE="$HOME/.claude/session-successor"
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=json.sh
+. "$SCRIPTS/json.sh"
 
-field() { printf '%s' "$input" | jq -r ".$1 // empty"; }
+field() { json_str "$input" "$1"; }
 sid=$(field session_id)
 transcript=$(field transcript_path)
 [ -n "$sid" ] && [ -f "$transcript" ] || exit 0
@@ -19,10 +21,12 @@ mkdir -p "$STATE/active" && : > "$STATE/active/$sid"
 
 # Context in use = the last main-thread request's input + cache tokens (matches the statusline's
 # context_window.remaining_percentage). Only the tail is read: the last request is near the end.
-used=$(tail -n 400 "$transcript" | grep '"type":"assistant"' | grep -v '"isSidechain":true' \
-  | grep -v '"model":"<synthetic>"' | tail -1 \
-  | jq -r '.message.usage | (.input_tokens // 0) + (.cache_read_input_tokens // 0) + (.cache_creation_input_tokens // 0)' 2>/dev/null)
-[ -n "$used" ] && [ "$used" -gt 0 ] 2>/dev/null || exit 0
+last=$(tail -n 400 "$transcript" | grep '"type":"assistant"' | grep -v '"isSidechain":true' \
+  | grep -v '"model":"<synthetic>"' | tail -1)
+[ -n "$last" ] || exit 0
+used=$(( $(json_num "$last" input_tokens || echo 0) + $(json_num "$last" cache_read_input_tokens || echo 0) \
+  + $(json_num "$last" cache_creation_input_tokens || echo 0) ))
+[ "$used" -gt 0 ] || exit 0
 remaining=$(awk -v u="$used" -v w="$window" 'BEGIN { r = 100 - u * 100 / w; printf "%d", (r < 0 ? 0 : r) }')
 [ "$remaining" -lt "$threshold" ] || exit 0
 
@@ -43,4 +47,5 @@ Do these steps now, in order:
 5. End with one line: "Handed off to ${new} (claude attach ${new})". Then do no further work in this session.
 EOF
 
-jq -n --arg e "$(field hook_event_name)" --arg m "$msg" '{hookSpecificOutput: {hookEventName: $e, additionalContext: $m}}'
+printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"%s"}}\n' \
+  "$(json_escape "$(field hook_event_name)")" "$(json_escape "$msg")"

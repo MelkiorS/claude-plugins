@@ -9,6 +9,11 @@
       "name": "session-successor",
       "source": "./plugins/session-successor",
       "description": "When a session runs low on context it writes a handoff prompt and starts its successor; the companion JetBrains plugin opens it in a new terminal tab."
+    },
+    {
+      "name": "statusline",
+      "source": "./plugins/statusline",
+      "description": "A compact status line: model, project, git branch, colour-coded context left and an hourly phrase. Pure bash."
     }
   ]
 }

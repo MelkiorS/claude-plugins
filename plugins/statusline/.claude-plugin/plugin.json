@@ -1,0 +1,12 @@
+{
+  "name": "statusline",
+  "version": "0.1.0",
+  "description": "A compact Claude Code status line: model, project, git branch with a dirty/clean dot, context left (green/yellow/red) and an hourly motivational phrase. Pure bash, no jq. Run /statusline:setup once to switch it on.",
+  "author": {
+    "name": "Andy V"
+  },
+  "homepage": "https://github.com/MelkiorS/claude-plugins/tree/main/plugins/statusline",
+  "repository": "https://github.com/MelkiorS/claude-plugins",
+  "license": "MIT",
+  "keywords": ["statusline", "status line", "context", "git"]
+}

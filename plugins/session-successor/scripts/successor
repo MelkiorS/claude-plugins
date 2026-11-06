@@ -6,8 +6,16 @@ set -euo pipefail
 STATE="$HOME/.claude/session-successor"
 INBOX="$STATE/inbox"
 SAFE_NAME='^[A-Za-z0-9._-]{1,64}$'
+# shellcheck source=json.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/json.sh"
 
-taken_names() { claude agents --json 2>/dev/null | jq -r '.[].name // empty'; }
+# One flat object per line from `claude agents --json`.
+agents() { claude agents --json 2>/dev/null | tr -d '\n' | grep -oE '\{[^{}]*\}' || true; }
+
+taken_names() { local o; while read -r o; do json_str "$o" name && echo || true; done < <(agents); }
+
+# The pid of the first running session with this name (entries for stopped sessions have no pid).
+pid_of() { local o; while read -r o; do [ "$(json_str "$o" name || true)" == "$1" ] && json_num "$o" pid && return 0; done < <(agents); return 1; }
 
 next_free() { # $1 = base, $2 = first number to try
   local base=$1 n=$2 taken
@@ -58,14 +66,13 @@ cmd_start() {
   # The successor's pid lets the IDE skip a note whose session has gone (a reboot, a stopped session).
   local pid="" _
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    pid=$(claude agents --json 2>/dev/null | jq -r --arg n "$name" 'first(.[] | select(.name == $n) | .pid // empty)') || pid=""
+    pid=$(pid_of "$name") || pid=""
     [ -n "$pid" ] && break
     sleep 0.5
   done
 
   mkdir -p "$INBOX" && chmod 700 "$STATE" "$INBOX"
-  jq -n --arg name "$name" --arg cwd "$cwd" --arg pid "$pid" \
-    '{name: $name, cwd: $cwd} + (if $pid == "" then {} else {pid: ($pid | tonumber)} end)' > "$INBOX/.$name.tmp"
+  printf '{"name":"%s","cwd":"%s"%s}\n' "$name" "$(json_escape "$cwd")" "${pid:+,\"pid\":$pid}" > "$INBOX/.$name.tmp"
   mv "$INBOX/.$name.tmp" "$INBOX/$name.json"
   echo "$name"
 }
