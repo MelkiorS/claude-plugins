@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AndyV's JetBrains plugins: a custom plugin repository.
+  Add this file's URL in the IDE (Settings | Plugins | gear icon | Manage Plugin Repositories):
+  https://raw.githubusercontent.com/MelkiorS/claude-plugins/main/jetbrains/updatePlugins.xml
+  Each entry's id, version and idea-version must match the plugin.xml inside its zip.
+-->
+<plugins>
+  <plugin id="session-successor"
+          url="https://raw.githubusercontent.com/MelkiorS/claude-plugins/main/jetbrains/dist/session-successor-jetbrains-0.1.0.zip"
+          version="0.1.0">
+    <idea-version since-build="262"/>
+    <name>Session Successor</name>
+    <description><![CDATA[
+        Companion to the <b>session-successor</b> Claude Code plugin. When a Claude Code session
+        hands off to its successor, this plugin opens a new terminal tab in the matching project
+        window and runs <code>claude attach &lt;successor&gt;</code> in it, with no action from you.
+        It watches <code>~/.claude/session-successor/inbox</code>; a note carries only a session
+        name, never a command.
+    ]]></description>
+    <depends>org.jetbrains.plugins.terminal</depends>
+  </plugin>
+</plugins>
