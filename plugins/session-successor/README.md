@@ -72,7 +72,11 @@ No IDE restart needed.
   opening a dead tab once its session is gone (stopped, or the machine rebooted): the IDE checks
   that the `pid` is alive and started before the note was written.
 
-State lives in `~/.claude/session-successor/` (`prompts/`, `inbox/`, `warned/`). Design notes and
+State lives in `~/.claude/session-successor/` (`active/`, `prompts/`, `inbox/`, `warned/`).
+
+**Is a session watched?** `ls ~/.claude/session-successor/active/` lists every session the hook has
+run in, by session id. Plugins load when a session starts, so a session that was already running
+when you installed (or updated) the plugin isn't watched until you restart it (`claude --resume`). Design notes and
 the reasons behind each choice: [docs/design.md](docs/design.md).
 
 ## Permissions
