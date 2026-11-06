@@ -18,7 +18,7 @@ Two parts:
 | Part | What it does | Where in this repo |
 | --- | --- | --- |
 | Claude Code plugin | watches context, triggers the handoff, starts the successor | `plugins/session-successor` |
-| JetBrains plugin | opens the successor's terminal tab | `jetbrains/session-successor` (zip on the Releases page) |
+| JetBrains plugin | opens the successor's terminal tab | `jetbrains/session-successor` |
 
 The Claude Code plugin works alone; without the JetBrains plugin you attach yourself with
 `claude attach <name>` (the old session prints the exact command).
@@ -46,8 +46,12 @@ Settings (via `/plugin` → session-successor → configure, or at install time 
 | `effort` | max | effort level the successor starts with |
 | `context_window` | 1000000 | your model's context window in tokens |
 
-**JetBrains plugin**: download `session-successor-jetbrains-<version>.zip` from Releases, then
-Settings → Plugins → ⚙ → *Install Plugin from Disk…*. No restart needed.
+**JetBrains plugin**: add this repo's plugin repository once (Settings → Plugins → ⚙ →
+*Manage Plugin Repositories…* → **+** →
+`https://raw.githubusercontent.com/MelkiorS/claude-plugins/main/jetbrains/updatePlugins.xml`), then
+install **Session Successor** from the Marketplace tab. Updates then arrive like any other plugin's.
+Or install the zip from [`jetbrains/dist/`](../../jetbrains/dist) with *Install Plugin from Disk…*.
+No IDE restart needed.
 
 ## How it works
 
