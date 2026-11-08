@@ -1,6 +1,6 @@
 {
   "name": "session-successor",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "When a session runs low on context it stops at a logical point, writes a handoff prompt, starts its successor (name-2, name-3, ...) at max effort and tells its peer sessions the new name. With the companion JetBrains plugin the successor opens in a new terminal tab.",
   "author": {
     "name": "Andy V"
@@ -33,6 +33,16 @@
         "high",
         "xhigh",
         "max"
+      ]
+    },
+    "worktree_guard": {
+      "type": "string",
+      "title": "Worktree guard for successors",
+      "description": "off: the successor edits the repo in place, like the session it replaces. on: keep Claude Code's guard, which blocks edits in a background session until it moves into a git worktree.",
+      "default": "off",
+      "options": [
+        "off",
+        "on"
       ]
     },
     "context_window": {

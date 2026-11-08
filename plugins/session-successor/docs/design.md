@@ -59,6 +59,14 @@ no custom title → `<folder>[-<branch>]-1`. Names already in `claude agents` ar
 session's folder. `--bg` refuses folders Claude hasn't been trusted in; the old session's folder
 already is. The successor reports `"effort":"max"` on every request.
 
+**Editing in place.** A `--bg` session can't edit files in a git checkout until it enters a
+worktree (Claude Code's `worktree.bgIsolation` guard). The guard protects a checkout that an
+interactive session is still working in; a successor takes over from a session that has stopped,
+so the plugin passes `--settings '{"worktree":{"bgIsolation":"none"}}'` (option `worktree_guard`,
+default `off`). Per-session, not per-repo: other background sessions keep the guard, and no repo's
+`.claude/settings.json` is touched. Verified 2026-11-09: a `--bg` session without the flag got the
+refusal; one with it wrote its file.
+
 **A drop folder, not a network endpoint.** The IDE plugin takes orders from files in
 `~/.claude/session-successor/inbox/` (mode 700). An HTTP handler on the IDE's built-in server would
 be reachable by any local process and possibly by web pages. The note names a session

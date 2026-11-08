@@ -45,6 +45,7 @@ Settings (via `/plugin` → session-successor → configure, or at install time 
 | `threshold` | 20 | hand off below this % of context left |
 | `effort` | max | effort level the successor starts with |
 | `context_window` | 1000000 | your model's context window in tokens |
+| `worktree_guard` | off | `off`: the successor edits the repo in place, like the session it replaces; `on`: keep Claude Code's guard (see below) |
 
 **JetBrains plugin**: add this repo's plugin repository once (Settings → Plugins → ⚙ →
 *Manage Plugin Repositories…* → **+** →
@@ -63,6 +64,12 @@ No IDE restart needed.
 - **Starting the successor.** `claude --bg --effort max -n <name> "<handoff prompt>"`, in the same
   folder as the old session (Claude refuses to start a background session in a folder it hasn't
   been trusted in; the old session's folder already is).
+- **Editing in place.** Claude Code blocks file edits in a background session until it moves into
+  a git worktree ("This background session hasn't isolated its changes yet. Call EnterWorktree
+  first…"). That guard keeps a background job from editing the checkout under you, but a
+  successor *replaces* the old session instead of working beside it, so the plugin starts it with
+  `--settings '{"worktree":{"bgIsolation":"none"}}'`. Only successors get this; your own `--bg`
+  sessions keep the guard. Set `worktree_guard=on` to keep it for successors too.
 - **Opening the tab.** `successor start` writes `{"name", "cwd", "pid"}` into
   `~/.claude/session-successor/inbox/`. Every open IDE window watches that folder; the window whose
   project contains `cwd` opens a terminal tab at its project root and runs `claude attach <name>`.

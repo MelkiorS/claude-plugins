@@ -61,7 +61,14 @@ cmd_start() {
   [ -d "$cwd" ] || { echo "no such dir: $cwd" >&2; exit 2; }
   [ -s "$prompt" ] || { echo "empty or missing prompt file: $prompt" >&2; exit 2; }
 
-  (cd "$cwd" && claude --bg --effort "${CLAUDE_PLUGIN_OPTION_EFFORT:-max}" -n "$name" "$(cat "$prompt")") >&2
+  # Claude Code blocks file edits in a background session until it moves into a git worktree. A
+  # successor replaces its predecessor rather than working beside it, so by default it edits the
+  # checkout in place, like the old session did. worktree_guard=on keeps Claude's guard.
+  local settings=()
+  [ "${CLAUDE_PLUGIN_OPTION_WORKTREE_GUARD:-off}" == "on" ] \
+    || settings=(--settings '{"worktree":{"bgIsolation":"none"}}')
+
+  (cd "$cwd" && claude --bg ${settings[@]+"${settings[@]}"} --effort "${CLAUDE_PLUGIN_OPTION_EFFORT:-max}" -n "$name" "$(cat "$prompt")") >&2
 
   # The successor's pid lets the IDE skip a note whose session has gone (a reboot, a stopped session).
   local pid="" _
