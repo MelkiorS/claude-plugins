@@ -4,10 +4,14 @@ Claude Code sessions die when their context window fills up. **session-successor
 over before that happens, with no action from you:
 
 1. Once less than **20 %** of a session's context window is left, the session is told to stop at a
-   logical point and write a handoff prompt (goal, what's done, state, next steps, key files, open
-   questions, peer sessions, gotchas).
+   logical point and write a handoff that covers only how to continue the task: what it's about;
+   the state (git, docs, progress, baseline numbers, the check command, the half-done step, anything
+   waiting on the user); the next steps with their commands; what the session learned; and where to
+   look, including the old transcript.
 2. It starts its **successor** in the background at **max effort**: `my-task` → `my-task-2` →
-   `my-task-3`. Sessions you never named become `<project>-<branch>-1`.
+   `my-task-3`. Sessions you never named become `<project>-<branch>-1`. The successor's first
+   message is the handoff, between a fixed opening (who it is and why it's taking over) and a
+   closing line (check git and the tests before editing).
 3. It tells every peer session it has talked to: "from now on message `my-task-2`".
 4. With the companion **JetBrains plugin**, the successor opens in a new terminal tab of the right
    project window (`claude attach my-task-2`), as if you had pressed Ctrl+Shift+T yourself.

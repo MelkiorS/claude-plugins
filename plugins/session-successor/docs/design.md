@@ -40,7 +40,21 @@ input with an `agent_id` is a subagent and is skipped.
 
 **The instruction.** Returned as `hookSpecificOutput.additionalContext`, so it lands in the
 session's context on its next prompt or tool call. The session itself picks the logical stopping
-point and writes the prompt; the hook only tells it what to produce and where.
+point and writes the handoff; the hook only tells it what to produce and where.
+
+**The handoff covers only how to continue the task.** The hook gives the session a fixed template:
+what the task is about and when it's done; the state (git and standing rules, docs, progress,
+baseline numbers, the check command, the half-done step, the user's unanswered message); the next
+steps with commands and expected results; what the session learned (traps, failed approaches,
+decisions with their reasons); and where to look, with the old transcript's path filled in by the
+hook. Lines that don't apply are dropped, not filled with guesses. Research on compaction and on
+human handoffs agrees on what gets lost: constraints and how-to-work rules, half-done or temporary
+state, failed approaches and the reasons behind decisions (e.g. arXiv 2610.31778 and 2608.11242;
+the I-PASS and HSE shift-handover studies), so the template asks for each by name.
+`successor start` wraps the handoff in a fixed opening (who the successor is, why it's taking over,
+deal with anything waiting on the user first) and a closing line (check `git status` and the check
+command; if the repo differs, trust the repo). Fixed text needs no explanation from the old
+session, so the first message makes sense even when the old session created no files of its own.
 
 **Plugins load at session start.** A plugin installed or updated mid-session never reaches sessions
 already running: probed by a marker in the hook, it ran in a session started after the install and

@@ -1,7 +1,9 @@
 #!/bin/bash
-# successor name  <transcript_path> <cwd>          -> prints the successor's name
-# successor start --name N --cwd DIR --prompt FILE -> starts the successor in the background and
-#                                                     leaves a note for the JetBrains plugin
+# successor name  <transcript_path> <cwd>  -> prints the successor's name
+# successor title <transcript_path>        -> prints the name the user gave the session (empty if none)
+# successor start --name N [--from OLD] --cwd DIR --prompt FILE
+#                                          -> starts the successor in the background with the handoff
+#                                             in FILE and leaves a note for the JetBrains plugin
 set -euo pipefail
 STATE="$HOME/.claude/session-successor"
 INBOX="$STATE/inbox"
@@ -24,13 +26,19 @@ next_free() { # $1 = base, $2 = first number to try
   echo "$base-$n"
 }
 
-cmd_name() {
-  local transcript=$1 cwd=$2 custom base n
+# The name the user gave the session, cleaned to [A-Za-z0-9._-]; empty if it has none.
+title_of() {
+  local custom
   # A name the user set (-n / /rename) is a custom-title record; auto names are ai-title only.
-  custom=$(grep -hoE '"type":"custom-title","customTitle":"[^"]*"' "$transcript" 2>/dev/null \
+  custom=$(grep -hoE '"type":"custom-title","customTitle":"[^"]*"' "$1" 2>/dev/null \
     | tail -1 | sed -E 's/.*"customTitle":"([^"]*)"/\1/' || true)
   # Titles can carry decoration (e.g. "✳ name"): keep only [A-Za-z0-9._-], spaces become dashes.
-  custom=$(printf '%s' "$custom" | LC_ALL=C sed -E 's/[[:space:]]+/-/g; s/[^A-Za-z0-9._-]//g; s/^[-.]+//; s/-+$//' | cut -c1-60)
+  printf '%s' "$custom" | LC_ALL=C sed -E 's/[[:space:]]+/-/g; s/[^A-Za-z0-9._-]//g; s/^[-.]+//; s/-+$//' | cut -c1-60
+}
+
+cmd_name() {
+  local transcript=$1 cwd=$2 custom base n
+  custom=$(title_of "$transcript")
   if [ -n "$custom" ]; then
     if [[ $custom =~ ^(.*)-([0-9]+)$ ]]; then
       base=${BASH_REMATCH[1]}; n=$((BASH_REMATCH[2] + 1))
@@ -48,16 +56,18 @@ cmd_name() {
 }
 
 cmd_start() {
-  local name="" cwd="" prompt=""
+  local name="" from="" cwd="" prompt=""
   while [ $# -gt 0 ]; do
     case $1 in
       --name) name=$2; shift 2 ;;
+      --from) from=$2; shift 2 ;;
       --cwd) cwd=$2; shift 2 ;;
       --prompt) prompt=$2; shift 2 ;;
       *) echo "unknown arg $1" >&2; exit 2 ;;
     esac
   done
   [[ $name =~ $SAFE_NAME ]] || { echo "bad name: $name" >&2; exit 2; }
+  [ -z "$from" ] || [[ $from =~ $SAFE_NAME ]] || { echo "bad name: $from" >&2; exit 2; }
   [ -d "$cwd" ] || { echo "no such dir: $cwd" >&2; exit 2; }
   [ -s "$prompt" ] || { echo "empty or missing prompt file: $prompt" >&2; exit 2; }
 
@@ -68,7 +78,17 @@ cmd_start() {
   [ "${CLAUDE_PLUGIN_OPTION_WORKTREE_GUARD:-off}" == "on" ] \
     || settings=(--settings '{"worktree":{"bgIsolation":"none"}}')
 
-  (cd "$cwd" && claude --bg ${settings[@]+"${settings[@]}"} --effort "${CLAUDE_PLUGIN_OPTION_EFFORT:-max}" -n "$name" "$(cat "$prompt")") >&2
+  # FILE only says how to continue the task. Fixed text around it says who the successor is, why it's
+  # taking over and to check the repo first, so the first message makes sense even when the old
+  # session created no files of its own.
+  local first
+  first="You are $name. The previous session${from:+, $from,} ran out of context, so it wrote this handoff and stopped. Everything you need to continue the task is below. If something is waiting on the user, deal with it first, then continue from \"Next\".
+
+$(cat "$prompt")
+
+Before editing, run \`git status\` and the check command. If the repo differs from this note, trust the repo."
+
+  (cd "$cwd" && claude --bg ${settings[@]+"${settings[@]}"} --effort "${CLAUDE_PLUGIN_OPTION_EFFORT:-max}" -n "$name" "$first") >&2
 
   # The successor's pid lets the IDE skip a note whose session has gone (a reboot, a stopped session).
   local pid="" _
@@ -86,6 +106,7 @@ cmd_start() {
 
 case ${1:-} in
   name) shift; cmd_name "$@" ;;
+  title) shift; title_of "${1:-}"; echo ;;
   start) shift; cmd_start "$@" ;;
-  *) echo "usage: successor name <transcript> <cwd> | start --name N --cwd DIR --prompt FILE" >&2; exit 2 ;;
+  *) echo "usage: successor name <transcript> <cwd> | title <transcript> | start --name N [--from OLD] --cwd DIR --prompt FILE" >&2; exit 2 ;;
 esac

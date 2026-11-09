@@ -35,14 +35,52 @@ mkdir -p "$STATE/warned" "$STATE/prompts"
 
 cwd=$(field cwd)
 new=$("$SCRIPTS/successor" name "$transcript" "$cwd")
+old=$("$SCRIPTS/successor" title "$transcript")
 prompt="$STATE/prompts/$new.md"
+
+# What the old session writes: only how to continue the task. `successor start` wraps it in a fixed
+# opening (who the successor is, why it's taking over) and a closing line, so this part never has
+# to explain itself.
+read -r -d '' template <<'EOF'
+# <Task>: handoff (<date>)
+
+## What this is about
+<1–3 lines: what we're building or fixing, and why.>
+Done when: <a result you can see or run>.
+
+## State
+- **Branch and git:** branch `<branch>`, HEAD `<sha>`, <pushed or not>. <Standing rules, e.g. "never push">
+- **Docs:** <design, plan and specs, with their paths and status> (leave this out if there are none)
+- **Progress:** <what's done and what's left> (if there is a progress file: "Tracked in `<path>`")
+- **Numbers:** <the baselines: test counts, sizes, timings> (leave this out if there are none)
+- **Check:** `<verification command>` → <last result>
+- **In progress:** <the half-done step>, or "nothing"
+- **Waiting on the user:** "<their last question, quoted>", or "nothing"
+
+## Next
+1. **Load the skills:** <skills> (leave this out if there are none)
+2. <step>: `<command>` → <expected result>
+3. …
+
+## What we learned in this session
+- **<trap or finding>:** <what happens> → <what to do instead>
+- **Don't:** <the approach we tried>; it failed because <why>
+- **Decided:** <decision>, because <reason>
+
+## Where to look
+Files to open first: <up to ~10> · Full history: `@TRANSCRIPT@`
+EOF
+template=${template//@TRANSCRIPT@/"$transcript"}
 
 read -r -d '' msg <<EOF
 CONTEXT HANDOFF REQUIRED: only about ${remaining}% of this session's context window is left.
 Do these steps now, in order:
 1. Stop at the next logical point. Finish or cleanly park the current step (no half-applied edits); start nothing new.
-2. Write a handoff prompt for your successor session \`${new}\` to ${prompt}. Write it so a fresh session with no other context can continue: goal and why; what is done; current state (branch, uncommitted changes, running processes); next steps; key files; open questions and decisions; peer sessions (names and what each one is doing); gotchas. Start it with: "You are ${new}, continuing the work of the previous session."
-3. Run: "${SCRIPTS}/successor" start --name ${new} --cwd "${cwd}" --prompt "${prompt}"
+2. Write the handoff for your successor session \`${new}\` to ${prompt}. A fresh session with no memory of this one continues the task from it, so it covers only how to continue the task. Fill in the template below: replace every <...> with exact paths, commit SHAs, commands and error strings, and drop each line marked "leave this out" that doesn't apply. Under "Waiting on the user", quote the user's latest message if you haven't fully answered it. Don't add an opening or a closing line: the plugin adds them.
+
+${template}
+
+3. Run: "${SCRIPTS}/successor" start --name ${new} --from "${old}" --cwd "${cwd}" --prompt "${prompt}"
 4. For every peer session you have exchanged messages with, use SendMessage: "I'm handing off — from now on message ${new}."
 5. End with one line: "Handed off to ${new} (claude attach ${new})". Then do no further work in this session.
 EOF
