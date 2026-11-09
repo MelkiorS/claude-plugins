@@ -53,8 +53,29 @@ jetbrains/<name>/                 a JetBrains plugin's source
 
 ## Releasing a JetBrains plugin
 
-1. Bump `version` in `jetbrains/<name>/build.gradle.kts` and run `./gradlew buildPlugin`.
+Gradle needs a JDK, and WebStorm's bundled one works:
+`export JAVA_HOME=~/.local/share/JetBrains/Toolbox/apps/webstorm/jbr`. Add `-PlocalIde=<IDE folder>`
+to build and verify against an installed IDE instead of downloading one.
+
+1. Bump `version` in `jetbrains/<name>/build.gradle.kts`, add a line to `<change-notes>` in its
+   `plugin.xml`, and run `./gradlew buildPlugin verifyPlugin`. JetBrains Marketplace runs the same
+   Plugin Verifier on every upload; it must say "Compatible".
 2. Copy `build/distributions/<name>-…-<version>.zip` into `jetbrains/dist/` (delete the old zip).
 3. Update the plugin's entry in `jetbrains/updatePlugins.xml`: `url` and `version`.
 4. Run `jetbrains/check-index.py`: the IDE skips an entry whose `id`, `version` or
    `idea-version` differ from the `plugin.xml` inside its zip.
+5. JetBrains Marketplace: sign the zip, then upload it.
+   - Once, outside the repo, make a signing key and certificate as in JetBrains'
+     [Plugin Signing](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html) guide, and
+     keep both: every release needs them.
+     ```
+     openssl genpkey -aes-256-cbc -algorithm RSA -out private_encrypted.pem -pkeyopt rsa_keygen_bits:4096
+     openssl rsa -in private_encrypted.pem -out private.pem
+     openssl req -key private.pem -new -x509 -days 365 -out chain.crt
+     ```
+   - Each release: `export CERTIFICATE_CHAIN="$(cat chain.crt)" PRIVATE_KEY="$(cat private.pem)"
+     PRIVATE_KEY_PASSWORD=<the passphrase>`, then `./gradlew signPlugin`. The signed zip is the
+     `…-signed.zip` in `build/distributions/`.
+   - The first version is uploaded by hand: plugins.jetbrains.com → *Upload plugin*. Later versions:
+     `PUBLISH_TOKEN=<token> ./gradlew publishPlugin` (a token from your Marketplace profile; it signs
+     first).

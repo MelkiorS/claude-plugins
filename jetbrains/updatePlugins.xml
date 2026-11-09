@@ -7,16 +7,20 @@
 -->
 <plugins>
   <plugin id="session-successor"
-          url="https://raw.githubusercontent.com/MelkiorS/claude-plugins/main/jetbrains/dist/session-successor-jetbrains-0.1.0.zip"
-          version="0.1.0">
+          url="https://raw.githubusercontent.com/MelkiorS/claude-plugins/main/jetbrains/dist/session-successor-jetbrains-0.1.1.zip"
+          version="0.1.1">
     <idea-version since-build="262"/>
     <name>Session Successor</name>
     <description><![CDATA[
-        Companion to the <b>session-successor</b> Claude Code plugin. When a Claude Code session
+        <p>Companion to the <b>session-successor</b> Claude Code plugin. When a Claude Code session
         hands off to its successor, this plugin opens a new terminal tab in the matching project
         window and runs <code>claude attach &lt;successor&gt;</code> in it, with no action from you.
         It watches <code>~/.claude/session-successor/inbox</code>; a note carries only a session
-        name, never a command.
+        name, never a command.</p>
+        <p><b>Requires</b> the Claude Code CLI with the
+        <a href="https://github.com/MelkiorS/claude-plugins/tree/main/plugins/session-successor">session-successor</a>
+        plugin. One command adds its marketplace and installs it:<br/>
+        <code>claude plugin install session-successor --marketplace MelkiorS/claude-plugins</code></p>
     ]]></description>
     <depends>org.jetbrains.plugins.terminal</depends>
   </plugin>
