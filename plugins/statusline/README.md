@@ -25,9 +25,17 @@ claude plugin install statusline --marketplace MelkiorS/claude-plugins
 Plugins can't switch a status line on by themselves, so run this once in Claude Code:
 
 ```
-/statusline:setup
+/statusline:setup            # asks where
+/statusline:setup user       # every project, just for you
+/statusline:setup project    # this project, for everyone who clones it
+/statusline:setup local      # this project, just for you
 ```
 
-It copies the script to `~/.claude/statusline-command.sh` and sets `statusLine` in
-`~/.claude/settings.json`. After a plugin update, run it again to pick up the new script. A project
-whose own `.claude/settings.json` sets `statusLine` keeps its own.
+| Scope | Settings file | Script |
+| --- | --- | --- |
+| `user` | `~/.claude/settings.json` | `~/.claude/statusline-command.sh` |
+| `project` | `.claude/settings.json` (commit it) | `.claude/statusline-command.sh` (commit it) |
+| `local` | `.claude/settings.local.json` | `~/.claude/statusline-command.sh` |
+
+When several set `statusLine`, local wins over project, and project over user. After a plugin update,
+run the setup again with the same scope to pick up the new script.

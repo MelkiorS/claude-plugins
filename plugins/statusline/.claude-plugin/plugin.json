@@ -1,7 +1,7 @@
 {
   "name": "statusline",
-  "version": "0.2.0",
-  "description": "A compact Claude Code status line: model and effort level, project, git branch with a dirty/clean dot, context left (green/yellow/red), session and weekly usage limits with their reset times, and an hourly motivational phrase. Pure bash, no jq. Run /statusline:setup once to switch it on.",
+  "version": "0.3.0",
+  "description": "A compact Claude Code status line: model and effort level, project, git branch with a dirty/clean dot, context left (green/yellow/red), session and weekly usage limits with their reset times, and an hourly motivational phrase. Pure bash, no jq. Run /statusline:setup once to switch it on for you, a project, or just you in a project.",
   "author": {
     "name": "Andy V"
   },
