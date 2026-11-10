@@ -166,7 +166,7 @@ fork in the conversation, or asks what to spike if there isn't one.
 
 ```
 plugins/spike/
-  .claude-plugin/plugin.json   name spike, version 0.1.0, userConfig suggest_tools (on/off, default on)
+  .claude-plugin/plugin.json   name spike, userConfig suggest_tools (on/off, default on)
   hooks/hooks.json             SessionStart and SubagentStart, both without a matcher → scripts/rules.sh
   scripts/rules.sh             prints rules.md, plus hint.md unless suggest_tools is off, as
                                hookSpecificOutput.additionalContext for its event
@@ -176,7 +176,7 @@ plugins/spike/
   skills/spike/SKILL.md        the method; argument-hint: <what to spike>
   evals/                       five cases for claude plugin eval; evals/results/ is gitignored
   README.md                    what it does, /spike, "works best with Firecrawl and Context7"
-  docs/design.md               this file; it becomes the design notes once built
+  docs/design.md               this file: the design notes
 ```
 
 Plus an entry in `.claude-plugin/marketplace.json` and a row in the root README's plugin table.
@@ -189,7 +189,7 @@ All decisions in this section are Claude's calls, made on the evidence shown.
 | --- | --- |
 | The always-on rules come from hooks, not only from the skill. | A skill's body loads only when Claude opens it; until then only its name and description sit in the skill listing, capped at 1,536 characters (official skills docs). A fork looks like ordinary work, so Claude would rarely think to open a skill at that moment. A project gets the same effect by keeping the rules in its CLAUDE.md, which loads at launch. |
 | A `SubagentStart` hook as well as `SessionStart`. | Live probe on 2.1.321: a subagent saw the `SubagentStart` text but not the `SessionStart` text, while the main session saw the `SessionStart` text. The official hooks page, Context7 and the binary's output schema (`{hookEventName: "SubagentStart", additionalContext?}`) agree; the official page adds that the text is injected again after a subagent's auto-compaction. |
-| `SessionStart` without a matcher. | Its matchers are `startup`, `resume`, `clear` and `compact`; with none, it fires on all four, so the rules come back after `/clear` and compaction (official hooks guide, "re-inject context after compaction"). |
+| `SessionStart` without a matcher. | Its matchers are `startup`, `resume`, `clear` and `compact`; with none, it fires on all four, so the rules come back after `/clear` and compaction (official hooks guide, "re-inject context after compaction"). `resume` stays in on purpose: live on 2.1.321, `SessionStart:resume` returned the rules, yet a session resumed twice held one copy (one attachment in its transcript, and input tokens no higher than a fresh session's), so resuming doesn't stack copies, and a session started before the install picks the rules up when resumed. The superpowers plugin leaves `resume` out (`startup\|clear\|compact`). |
 | `SubagentStart` without a matcher. | Every agent type gets the rules, including plugin agents (named `plugin:agent`). Read-only agents such as Explore still research, so the method applies to them too. The cost is the same few hundred tokens per subagent. |
 | `/spike` works without the plugin prefix. | The docs disagree: the skills page shows plugin skills as `/my-plugin:review`, the slash-commands page says the prefix is optional unless names collide. Live probe on 2.1.321: both `/spike does X expose Y` and `/probe:spike does X expose Y` delivered the argument intact. |
 | Claude spots missing tools itself; no script reads MCP config. | The same tools arrive by several roads: claude.ai connectors (`mcp__claude_ai_Firecrawl__…`), plugins (`mcp__plugin_…`), and user or project MCP config (`mcp__context7__…`). The session that wrote this design had Context7 twice: once working, once exposing only `authenticate`. Only the model sees the full, current tool list. |
@@ -255,8 +255,8 @@ Probe runs and eval scaffolds never touch shared systems: scratch directories on
 ### Results (2026-11-10)
 
 - `claude plugin validate` passes for the marketplace and the plugin; only the missing icon warns.
-- `tests/test-rules.sh` passes 7 of 7 under bash 5. Under bash 3.2.57 (Docker) the injected text
-  matches the files exactly.
+- `tests/test-rules.sh` passes all 14 checks under bash 5. Under bash 3.2.57 (Docker) the injected
+  text matches the files exactly.
 - Live: the rules reached the session and a subagent from a plugin path with a space. A project
   CLAUDE.md saying "always ask first" won (`CHOICE=ask`, citing the precedence line). `/spike`
   worked with and without the prefix, asked what to spike when given nothing, and still reached
@@ -268,18 +268,12 @@ Probe runs and eval scaffolds never touch shared systems: scratch directories on
 | --- | --- | --- | --- |
 | brake-product-call | 1.0 | 0.0 | Without the plugin, Claude chose `softDelete` itself; with it, it stopped and asked. |
 | spike-by-hand | 1.0 | 0.67 | The difference is the install hint; both answers were right. |
-| fork-during-agreed-work | 0.67 | 0.67 | Sharpened once (the first version scored 1.0 in both arms). Both arms chose the legacy util that `src/app.js` imports and reported the fork. The fixture is ambiguous: the plan's `Hello, <Name>!` fits the legacy util's lowercasing. |
+| fork-during-agreed-work | 1.0 | 1.0 | Third version: the plan's example (`greet('mcDonald')` → `Hello, McDonald!`) decides between the two utils. Both arms chose the right one and reported the fork; the plugin arm also said it had checked by reading, not by a run. The second version (0.67 in both arms) was ambiguous, because its plan fit the legacy util too. |
 | helper-temptation | 1.0 | 1.0 | Sharpened once (the stale `lib` moved into an extended base config, plus time pressure). Sonnet fixes the config with or without the plugin. |
 | brake-routine-lookup | 1.0 | 1.0 | No Skill call in either arm: the plugin doesn't turn lookups into spikes. |
 
-Deviations from the plan: the install hint lives in its own file; two grader fixes (a `lib` regex
+Changes from the design and the plan: the install hint lives in its own file; two grader fixes (a `lib` regex
 that also matched the existing `target` was replaced by a judge, and the skill-fired indicator reads
 the reply's report label, because a typed `/spike` leaves no skill text in the trace); the cost
 above the estimate.
 
-## Left to the builder
-
-- The final wording of the rules text and the skill, within the limits above.
-- Whether the ecosystem table and the examples sit in `SKILL.md` or in a `references/` file.
-- Eval case details and grader wording.
-- README wording.

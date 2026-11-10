@@ -20,6 +20,10 @@ check "user's own instructions win"  'grep -q "the user'"'"'s instructions and C
 check "probes change no shared system" 'grep -q "throwaway probe that changes no shared system" <<<"$s"'
 check "no paste-into-subagents line" '! grep -q "for a subagent or another session passes" <<<"$s"'
 check "rules + hint under 400 words"  '[ "$(cat "$root/scripts/rules.md" "$root/scripts/hint.md" | wc -w)" -lt 400 ]'
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+cp "$root/scripts/rules.sh" "$tmp/"   # the script alone, with no rules.md beside it
+check "no rules.md prints nothing"   '[ -z "$(bash "$tmp/rules.sh" SessionStart)" ]'
+check "off output is exactly rules.md" '[ "$(tail -n +2 <<<"$off")" = "$(<"$root/scripts/rules.md")" ]'
 check "unknown event prints nothing" '[ -z "$(bash "$root/scripts/rules.sh" Stop)" ]'
 check "always exits 0"               'bash "$root/scripts/rules.sh" Stop; [ $? -eq 0 ]'
 exit $fail

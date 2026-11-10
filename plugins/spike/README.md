@@ -32,7 +32,8 @@ runs the full method on one question and reports it:
 > **Skipped:** the sources it couldn't use, and why
 
 With no question, `/spike` takes the open fork in the conversation, or asks what to spike. If
-another plugin also has a `spike` skill, type `/spike:spike`.
+another skill is also named `spike` (from a plugin, or your own user or project skill), type
+`/spike:spike`.
 
 ## Works best with Firecrawl and Context7
 
@@ -93,7 +94,7 @@ Evals (`claude plugin eval`, Sonnet, one run per arm, with and without the plugi
 | --- | --- | --- |
 | brake-product-call: the next step needs a product decision | 1.0 | 0.0 |
 | spike-by-hand: `/spike` on a package whose README contradicts its code | 1.0 | 0.67 |
-| fork-during-agreed-work: two utils, and the plan doesn't say which | 0.67 | 0.67 |
+| fork-during-agreed-work: two utils, and only the plan's example shows which is right | 1.0 | 1.0 |
 | helper-temptation: a stale tsconfig `lib` hides `.at()` | 1.0 | 1.0 |
 | brake-routine-lookup: a plain API question stays a quick answer | 1.0 | 1.0 |
 

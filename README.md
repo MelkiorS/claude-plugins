@@ -31,7 +31,7 @@ https://raw.githubusercontent.com/MelkiorS/claude-plugins/main/jetbrains/updateP
 | --- | --- |
 | [session-successor](plugins/session-successor) | Before a session's context window runs out, it writes a handoff prompt and starts its successor (`name-2`, `name-3`, ...) at max effort; a companion [JetBrains plugin](https://plugins.jetbrains.com/plugin/35944-session-successor) opens the successor in a new terminal tab. |
 | [statusline](plugins/statusline) | A compact status line: model, project, git branch with a dirty/clean dot, colour-coded context left and an hourly phrase. Run `/statusline:setup` once after installing. |
-| [spike](plugins/spike) | Spike rules in every session and subagent: at a fork during agreed work Claude settles it with evidence and keeps going, looks for an existing solution before writing a helper, and stops only for product, scope or irreversible calls. `/spike <question>` runs the full method; works best with Firecrawl and Context7. |
+| [spike](plugins/spike) | Spike rules in every session and subagent: at a fork during agreed work Claude settles it with evidence and keeps going, looks for an existing solution before writing a helper, and stops only when no spike can settle it or for product, scope or irreversible calls. `/spike <question>` runs the full method; works best with Firecrawl and Context7. |
 
 Every plugin here is plain bash with no extra tools to install (no `jq`).
 

@@ -1,5 +1,5 @@
 ---
-description: A fork during agreed work. Two capitalize utilities exist and old code imports the legacy one; with the plugin, Claude settles which one with evidence (src/utils/README.md), keeps going and reports the fork inline.
+description: A fork during agreed work. Two capitalize utilities exist and old code imports the legacy one, which lowercases the rest of the word; the plan's example (mcDonald → McDonald) and src/utils/README.md decide. With the plugin, Claude settles it with evidence, keeps going and reports the fork inline.
 tags: [first]
 max_turns: 25
 timeout_seconds: 600

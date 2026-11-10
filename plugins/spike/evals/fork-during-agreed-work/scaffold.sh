@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fixture: an agreed plan step needs "the project's capitalize util", and the project has two. Old code
-# imports the legacy one; only src/utils/README.md says which one new code should use.
+# imports the legacy one, which lowercases the rest of the word; the plan's example (mcDonald → McDonald)
+# and src/utils/README.md both say the other one is right.
 set -euo pipefail
 mkdir -p src/utils src/lib
 
@@ -13,7 +14,7 @@ cat > PLAN.md <<'EOF'
 
 Agreed plan, approved by the user:
 
-1. Add `greet(name)` to `src/greet.js`. It returns `Hello, <Name>!` (the name capitalized), using the project's capitalize util.
+1. Add `greet(name)` to `src/greet.js`. It returns `Hello, <Name>!` with only the first letter capitalized and the rest kept as given, so `greet('mcDonald')` returns `Hello, McDonald!`. Use the project's capitalize util.
 2. Use `greet` in `src/app.js`.
 EOF
 

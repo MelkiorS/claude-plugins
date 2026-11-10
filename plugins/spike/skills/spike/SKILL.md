@@ -88,9 +88,10 @@ recorded once is never re-derived.
 
 ## Missing tools
 
-Check your own tool list. Firecrawl counts if a tool name contains `firecrawl`, and Context7 if one
-contains `context7` (any case), unless that server offers only an `authenticate` tool: then it isn't
-signed in.
+Check your own tool list, including tools that are listed by name only and loaded before use
+(deferred tools). Firecrawl counts if a tool name contains `firecrawl`, and Context7 if one contains
+`context7` (any case), unless that server offers only an `authenticate` tool: then it isn't signed
+in.
 
 For a missing tool, use the fallback (WebFetch or WebSearch for the docs; the installed source and
 the docs instead of Context7) and list it under **Skipped**. A subagent stops there: some subagent
