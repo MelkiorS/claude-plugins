@@ -11,6 +11,10 @@ claude plugin install <plugin> --marketplace MelkiorS/claude-plugins
 The first install also adds this marketplace. After that, `claude plugin install <plugin>@AndyV`
 or `/plugin` installs the others, and `claude plugin marketplace update AndyV` pulls updates.
 
+To add the marketplace on its own, without installing anything yet, run
+`claude plugin marketplace add MelkiorS/claude-plugins`, or `/plugin marketplace add MelkiorS/claude-plugins`
+inside a session. Then browse it in `/plugin`.
+
 ## Install a JetBrains plugin
 
 Session Successor is on [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35944-session-successor):
