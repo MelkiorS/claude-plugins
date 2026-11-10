@@ -3,11 +3,15 @@
 A compact status line for Claude Code:
 
 ```
-Opus │ claude-plugins │ main ● │ ctx: 42% │ 🦾 Beast mode!
+Opus high │ claude-plugins │ main ● │ ctx: 42% │ session: 63% ↻14:25 │ week: 41% ↻Sat 09:00 │ 🦾 Beast mode!
 ```
 
-- model, project folder, git branch with a red (uncommitted changes) or green (clean) dot
+- model with its reasoning effort (when the model supports it), project folder, git branch with a red (uncommitted changes) or green (clean) dot
 - context left, green above 50 %, yellow above 25 %, red below
+- your usage limits as `/usage` names them: `session` is the 5-hour window, `week` the 7-day one.
+  Each shows how much you have used (green below 50 %, yellow below 80 %, red from 80 %) and when it
+  resets, as a time today or a weekday and time later. Claude Code sends these only to Pro, Max and
+  Ultra subscribers, after the session's first reply, so until then they are hidden
 - a motivational phrase that changes every hour
 
 Pure bash: it needs only `git`, `date` and `printf`, no `jq`.

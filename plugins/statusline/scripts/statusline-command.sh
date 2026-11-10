@@ -24,6 +24,50 @@ extract_number() {
 model_name=$(extract_value "$input" "display_name")
 remaining_pct=$(extract_number "$input" "remaining_percentage")
 
+# Reasoning effort; absent when the model does not support the effort parameter
+effort=""
+if [[ $input =~ \"effort\"[[:space:]]*:[[:space:]]*\{([^}]*)\} ]]; then
+  effort=$(extract_value "${BASH_REMATCH[1]}" "level")
+fi
+
+# Usage limits (Pro/Max/Ultra only, after the first API response).
+# Each window is its own object; context_window has its own used_percentage,
+# so read the fields from inside the window object only.
+# Prints "<used> <resets_at>" for a window, or nothing when it is absent.
+limit_window() {
+  if [[ $input =~ \"$1\"[[:space:]]*:[[:space:]]*\{([^}]*)\} ]]; then
+    local body="${BASH_REMATCH[1]}"
+    local used reset
+    used=$(extract_number "$body" "used_percentage")
+    reset=$(extract_number "$body" "resets_at")
+    [ -n "$used" ] && echo "$used ${reset%.*}"
+  fi
+}
+
+# "63% ↻14:25", green below 50 %, yellow below 80 %, red from 80 %.
+# The reset shows as a time when it is today, else as weekday + time.
+limit_segment() {
+  local used="$1" reset="$2"
+  [ -z "$used" ] && return
+  local pct color fmt when
+  pct=$(printf "%.0f" "$used")
+  color="\033[32m"
+  if [ "$pct" -ge 80 ]; then
+    color="\033[31m"
+  elif [ "$pct" -ge 50 ]; then
+    color="\033[33m"
+  fi
+  printf "%s" "\033[1m${color}${pct}%\033[0m"
+  [ -z "$reset" ] && return
+  fmt="%H:%M"
+  # GNU date takes -d @epoch, BSD/macOS date takes -r epoch
+  if [ "$(date -d "@$reset" +%F 2>/dev/null || date -r "$reset" +%F 2>/dev/null)" != "$(date +%F)" ]; then
+    fmt="%a %H:%M"
+  fi
+  when=$(date -d "@$reset" +"$fmt" 2>/dev/null || date -r "$reset" +"$fmt" 2>/dev/null)
+  [ -n "$when" ] && printf "%s" " \033[2m↻${when}\033[0m"
+}
+
 # Motivational phrases (100 items)
 phrases=(
   "🚀 Ship it!"
@@ -215,15 +259,26 @@ else
   ctx="100%"
 fi
 
+# Session (5-hour) and weekly usage limits, named as /usage names them
+session=$(limit_segment $(limit_window five_hour))
+week=$(limit_segment $(limit_window seven_day))
+
 # Build output with │ separators
 DIM="\033[2m"
 RST="\033[0m"
 output="\033[1m\033[35m${model_short}${RST}"
+[ -n "$effort" ] && output="${output} \033[35m${effort}${RST}"
 output="${output} ${DIM}│${RST} \033[1m\033[36m${project}${RST}"
 if [ -n "$branch" ]; then
   output="${output} ${DIM}│${RST} \033[32m${branch}${RST} ${branch_dot}"
 fi
 output="${output} ${DIM}│${RST} ${DIM}ctx:${RST} \033[1m${ctx_color}${ctx}${RST}"
+if [ -n "$session" ]; then
+  output="${output} ${DIM}│${RST} ${DIM}session:${RST} ${session}"
+fi
+if [ -n "$week" ]; then
+  output="${output} ${DIM}│${RST} ${DIM}week:${RST} ${week}"
+fi
 output="${output} ${DIM}│${RST} \033[36m${motivation}${RST}"
 
 printf "%b" "$output"

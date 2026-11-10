@@ -13,7 +13,7 @@
     {
       "name": "statusline",
       "source": "./plugins/statusline",
-      "description": "A compact status line: model, project, git branch, colour-coded context left and an hourly phrase. Pure bash. After installing, run /statusline:setup once to switch it on."
+      "description": "A compact status line: model and effort, project, git branch, colour-coded context left, session and weekly usage limits with reset times, and an hourly phrase. Pure bash. After installing, run /statusline:setup once to switch it on."
     },
     {
       "name": "spike",
