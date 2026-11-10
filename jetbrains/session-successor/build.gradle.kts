@@ -51,3 +51,8 @@ intellijPlatform {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 }
+
+// verifyPluginSignature reads the zip signPlugin writes but doesn't declare it, and Gradle 9 refuses to
+// run both in one go without a declared order. mustRunAfter (not dependsOn) keeps the check runnable
+// on its own, without the private key.
+tasks.named("verifyPluginSignature") { mustRunAfter("signPlugin") }

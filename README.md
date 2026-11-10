@@ -13,21 +13,23 @@ or `/plugin` installs the others, and `claude plugin marketplace update AndyV` p
 
 ## Install a JetBrains plugin
 
-This repo is also a JetBrains plugin repository. Add it once, in any JetBrains IDE: Settings →
-Plugins → ⚙ → *Manage Plugin Repositories…* → **+** →
+Session Successor is on [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35944-session-successor):
+in any JetBrains IDE 2026.2+, open Settings → Plugins → **Marketplace**, search for
+**Session Successor** and install it. New versions arrive as normal plugin updates.
+
+This repo is also a JetBrains plugin repository that serves the same builds. Session Successor
+doesn't need it any more; to add it anyway: Settings → Plugins → ⚙ → *Manage Plugin
+Repositories…* → **+** →
 
 ```
 https://raw.githubusercontent.com/MelkiorS/claude-plugins/main/jetbrains/updatePlugins.xml
 ```
 
-Then find the plugin in the **Marketplace** tab and install it; new versions arrive as normal
-plugin updates.
-
 ## Plugins
 
 | Plugin | What it does |
 | --- | --- |
-| [session-successor](plugins/session-successor) | Before a session's context window runs out, it writes a handoff prompt and starts its successor (`name-2`, `name-3`, ...) at max effort; a companion JetBrains plugin opens the successor in a new terminal tab. |
+| [session-successor](plugins/session-successor) | Before a session's context window runs out, it writes a handoff prompt and starts its successor (`name-2`, `name-3`, ...) at max effort; a companion [JetBrains plugin](https://plugins.jetbrains.com/plugin/35944-session-successor) opens the successor in a new terminal tab. |
 | [statusline](plugins/statusline) | A compact status line: model, project, git branch with a dirty/clean dot, colour-coded context left and an hourly phrase. Run `/statusline:setup` once after installing. |
 
 Every plugin here is plain bash with no extra tools to install (no `jq`).

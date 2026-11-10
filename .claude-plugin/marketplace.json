@@ -8,7 +8,7 @@
     {
       "name": "session-successor",
       "source": "./plugins/session-successor",
-      "description": "When a session runs low on context it writes a handoff prompt and starts its successor; the companion JetBrains plugin opens it in a new terminal tab."
+      "description": "When a session runs low on context it writes a handoff and starts its successor; the companion JetBrains plugin, Session Successor on JetBrains Marketplace (https://plugins.jetbrains.com/plugin/35944-session-successor), opens it in a new terminal tab."
     },
     {
       "name": "statusline",

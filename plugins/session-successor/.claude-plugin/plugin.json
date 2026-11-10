@@ -1,7 +1,7 @@
 {
   "name": "session-successor",
-  "version": "0.2.0",
-  "description": "When a session runs low on context it stops at a logical point, writes a handoff prompt, starts its successor (name-2, name-3, ...) at max effort and tells its peer sessions the new name. With the companion JetBrains plugin the successor opens in a new terminal tab.",
+  "version": "0.2.1",
+  "description": "When a session runs low on context it stops at a logical point, writes a handoff, starts its successor (name-2, name-3, ...) at max effort and tells its peer sessions the new name. With the companion JetBrains plugin, Session Successor on JetBrains Marketplace (https://plugins.jetbrains.com/plugin/35944-session-successor), the successor opens in a new terminal tab.",
   "author": {
     "name": "Andy V"
   },

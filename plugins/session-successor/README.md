@@ -13,7 +13,8 @@ over before that happens, with no action from you:
    message is the handoff, between a fixed opening (who it is and why it's taking over) and a
    closing line (check git and the tests before editing).
 3. It tells every peer session it has talked to: "from now on message `my-task-2`".
-4. With the companion **JetBrains plugin**, the successor opens in a new terminal tab of the right
+4. With the companion [**JetBrains plugin**](https://plugins.jetbrains.com/plugin/35944-session-successor)
+   (Session Successor on JetBrains Marketplace), the successor opens in a new terminal tab of the right
    project window (`claude attach my-task-2`), as if you had pressed Ctrl+Shift+T yourself.
 5. The old session stays open, read-only, for you to scroll back through.
 
@@ -51,12 +52,9 @@ Settings (via `/plugin` → session-successor → configure, or at install time 
 | `context_window` | 1000000 | your model's context window in tokens |
 | `worktree_guard` | off | `off`: the successor edits the repo in place, like the session it replaces; `on`: keep Claude Code's guard (see below) |
 
-**JetBrains plugin**: add this repo's plugin repository once (Settings → Plugins → ⚙ →
-*Manage Plugin Repositories…* → **+** →
-`https://raw.githubusercontent.com/MelkiorS/claude-plugins/main/jetbrains/updatePlugins.xml`), then
-install **Session Successor** from the Marketplace tab. Updates then arrive like any other plugin's.
-Or install the zip from [`jetbrains/dist/`](../../jetbrains/dist) with *Install Plugin from Disk…*.
-No IDE restart needed.
+**JetBrains plugin**: in Settings → Plugins → **Marketplace**, search for **Session Successor** and
+install it ([its JetBrains Marketplace page](https://plugins.jetbrains.com/plugin/35944-session-successor)).
+Updates then arrive like any other plugin's. No IDE restart needed.
 
 ## How it works
 
