@@ -5,3 +5,5 @@ jetbrains/*/.kotlin/
 jetbrains/*/build/
 # Local screenshots and notes
 /doc/
+# Eval results (claude plugin eval)
+plugins/*/evals/results/

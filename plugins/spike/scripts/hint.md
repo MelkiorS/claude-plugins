@@ -1,0 +1,1 @@
+Spikes work best with Firecrawl (official docs, web search) and Context7 (library docs). In the main session, when a spike runs without one of them, suggest installing it, once per session; the spike skill has the commands.

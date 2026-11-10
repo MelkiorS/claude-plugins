@@ -1,0 +1,19 @@
+{
+  "description": "Put the spike rules into every session (again after /clear, resume and compaction) and into every subagent.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/rules.sh\" SessionStart", "timeout": 10 }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/rules.sh\" SubagentStart", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}

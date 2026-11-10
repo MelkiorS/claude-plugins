@@ -1,0 +1,31 @@
+{
+  "name": "spike",
+  "version": "0.1.0",
+  "description": "Spike rules for Claude Code: at a fork during agreed work Claude settles it with evidence and keeps going, before writing a helper it looks for an existing solution, and /spike <question> runs the full method (official docs, Context7, the installed source, then a live run). Works best with Firecrawl and Context7.",
+  "author": {
+    "name": "Andy V"
+  },
+  "license": "MIT",
+  "keywords": [
+    "spike",
+    "verification",
+    "documentation",
+    "context7",
+    "firecrawl",
+    "subagents"
+  ],
+  "userConfig": {
+    "suggest_tools": {
+      "type": "string",
+      "title": "Suggest Firecrawl and Context7",
+      "description": "on: when a spike runs without Firecrawl or Context7, Claude suggests installing them, once per session. off: Claude only says which source it skipped.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    }
+  },
+  "homepage": "https://github.com/MelkiorS/claude-plugins/tree/main/plugins/spike",
+  "repository": "https://github.com/MelkiorS/claude-plugins"
+}

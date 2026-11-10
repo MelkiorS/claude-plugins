@@ -14,6 +14,11 @@
       "name": "statusline",
       "source": "./plugins/statusline",
       "description": "A compact status line: model, project, git branch, colour-coded context left and an hourly phrase. Pure bash. After installing, run /statusline:setup once to switch it on."
+    },
+    {
+      "name": "spike",
+      "source": "./plugins/spike",
+      "description": "Spike rules in every session and subagent: Claude settles forks with evidence and keeps going, looks for an existing solution before writing a helper, and stops only for product, scope or irreversible calls. /spike <question> runs the full method. Works best with Firecrawl and Context7."
     }
   ]
 }
