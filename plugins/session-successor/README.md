@@ -18,6 +18,10 @@ over before that happens, with no action from you:
    project window (`claude attach my-task-2`), as if you had pressed Ctrl+Shift+T yourself.
 5. The old session stays open, read-only, for you to scroll back through.
 
+A successor runs in the background, and a background session that stops at a **usage limit** doesn't
+continue by itself the way an interactive one does. So the plugin sees to that too: just after the limit
+resets, the session gets a continue prompt and carries on. See [After a usage limit](#after-a-usage-limit).
+
 Two parts:
 
 | Part | What it does | Where in this repo |
@@ -31,7 +35,9 @@ The Claude Code plugin works alone; without the JetBrains plugin you attach your
 ## Install
 
 **Requirements:** Claude Code with background sessions (`claude --bg`, `claude attach`; tested
-with 2.1.318), `bash` and `git`; no `jq` needed. Tested on Linux; macOS should work but is untested.
+with 2.1.318, and continuing after a usage limit with 2.1.327), `bash` and `git`; no `jq` needed.
+Continuing after a usage limit also uses `script` from util-linux, which most Linux systems have
+(minimal container images may not). Tested on Linux; macOS should work but is untested.
 JetBrains plugin: any JetBrains IDE **2026.2+** with the bundled Terminal plugin (WebStorm,
 IntelliJ IDEA, PyCharm, ...).
 
@@ -51,6 +57,7 @@ Settings (via `/plugin` → session-successor → configure, or at install time 
 | `effort` | max | effort level the successor starts with |
 | `context_window` | 1000000 | your model's context window in tokens |
 | `worktree_guard` | off | `off`: the successor edits the repo in place, like the session it replaces; `on`: keep Claude Code's guard (see below) |
+| `limit_resume` | on | `on`: a background session that stops at a usage limit gets a continue prompt just after the reset; `off`: it stays stopped until you type |
 
 **JetBrains plugin**: in Settings → Plugins → **Marketplace**, search for **Session Successor** and
 install it ([its JetBrains Marketplace page](https://plugins.jetbrains.com/plugin/35944-session-successor)).
@@ -81,12 +88,40 @@ Updates then arrive like any other plugin's. No IDE restart needed.
   opening a dead tab once its session is gone (stopped, or the machine rebooted): the IDE checks
   that the `pid` is alive and started before the note was written.
 
-State lives in `~/.claude/session-successor/` (`active/`, `prompts/`, `inbox/`, `warned/`).
+State lives in `~/.claude/session-successor/` (`active/`, `prompts/`, `inbox/`, `warned/`, `limits/`).
 
 **Is a session watched?** `ls ~/.claude/session-successor/active/` lists every session the hook has
 run in, by session id. Plugins load when a session starts, so a session that was already running
 when you installed (or updated) the plugin isn't watched until you restart it (`claude --resume`). Design notes and
 the reasons behind each choice: [docs/design.md](docs/design.md).
+
+## After a usage limit
+
+Since 2.1.234 Claude Code waits at a usage limit and continues by itself after the reset, but only in
+interactive sessions: its docs say the wait is never offered in "Background sessions and `-p` runs".
+Every successor is a background session, so without help it sits at the limit until you type into it.
+
+With `limit_resume` on (the default):
+
+1. When a turn ends on a usage limit, the plugin reads the reset time from the transcript and starts a
+   small waiter for that session.
+2. Ninety seconds after the reset, the waiter checks that the session is still a running background
+   session stopped at that same limit. If you, a peer session or a finished background task already
+   got it going, it does nothing. A session that woke up only to hit the same limit again is still
+   stopped there, so it still gets its continue.
+3. It sends the session the prompt Claude Code itself uses: "Your claude.ai usage limit has reset.
+   Continue the task you were working on when the limit was reached; do not repeat work that is
+   already complete." A terminal tab attached to the session simply shows it carrying on.
+
+This covers every background session the plugin runs in, not only successors, and leaves interactive
+sessions to Claude Code. The one exception is an old session that has already handed off: its successor
+carries the task now, so the old session stays stopped. It keeps Claude Code's own bounds: no wait when the reset is more than 24
+hours away (a weekly limit), and at most three automatic continues in a row until you type a prompt.
+If the machine sleeps through the reset, the session continues within half a minute of waking.
+
+The session carries on unattended, in whatever permission mode it has, and spends the fresh allowance.
+Set `limit_resume=off` if you'd rather it stayed stopped. What the plugin did and why is in
+`~/.claude/session-successor/limits/log`, one line per decision.
 
 ## Permissions
 
@@ -118,4 +153,7 @@ The zip lands in `build/distributions/`.
 - The terminal-tab API comes from the IDE's newer terminal (`intellij.terminal.frontend`), which
   JetBrains may still change; hence 2026.2+.
 - The context window size isn't in the transcript; set `context_window` if yours isn't 1M.
+- Continuing after a usage limit needs a claude.ai subscription login (only those stops record when
+  the limit resets) and `script` to give `claude` a terminal. The macOS form of that command is
+  written but untested.
 - Bash only: no native Windows support.

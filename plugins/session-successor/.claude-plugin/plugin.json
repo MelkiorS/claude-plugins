@@ -1,7 +1,7 @@
 {
   "name": "session-successor",
-  "version": "0.2.1",
-  "description": "When a session runs low on context it stops at a logical point, writes a handoff, starts its successor (name-2, name-3, ...) at max effort and tells its peer sessions the new name. With the companion JetBrains plugin, Session Successor on JetBrains Marketplace (https://plugins.jetbrains.com/plugin/35944-session-successor), the successor opens in a new terminal tab.",
+  "version": "0.3.0",
+  "description": "When a session runs low on context it stops at a logical point, writes a handoff, starts its successor (name-2, name-3, ...) at max effort and tells its peer sessions the new name. With the companion JetBrains plugin, Session Successor on JetBrains Marketplace (https://plugins.jetbrains.com/plugin/35944-session-successor), the successor opens in a new terminal tab. A background session that stops at a usage limit is sent a continue prompt once the limit resets.",
   "author": {
     "name": "Andy V"
   },
@@ -51,6 +51,16 @@
       "description": "Size of your model's context window, used to compute how much is left.",
       "default": 1000000,
       "min": 100000
+    },
+    "limit_resume": {
+      "type": "string",
+      "title": "Continue after a usage limit",
+      "description": "on: a background session that stops at a usage limit is sent a continue prompt just after the limit resets. off: it stays stopped until you type.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
     }
   },
   "homepage": "https://github.com/MelkiorS/claude-plugins/tree/main/plugins/session-successor",

@@ -1,0 +1,136 @@
+#!/bin/bash
+# limit-resume <session_id> <transcript_path> <reset_epoch>
+# The waiter that limit-stop.sh starts when a turn ends on a usage limit. If the session is a running
+# BACKGROUND session, it waits until just after the limit resets and sends the session one prompt to carry
+# on. Interactive sessions are left alone: Claude Code continues those by itself.
+# Every decision goes to ~/.claude/session-successor/limits/log.
+STATE="$HOME/.claude/session-successor/limits"
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=json.sh
+. "$SCRIPTS/json.sh"
+
+# The text Claude Code itself sends when an interactive session continues after a reset. send() puts it in
+# single quotes for /bin/sh, so it must never contain one.
+PROMPT='Your claude.ai usage limit has reset. Continue the task you were working on when the limit was reached; do not repeat work that is already complete.'
+MARGIN=${LIMIT_RESUME_MARGIN:-90}           # seconds after the reset before sending
+POLL=${LIMIT_RESUME_POLL:-30}               # wall-clock check interval, so a machine that slept catches up on waking
+SETTLE=${LIMIT_RESUME_SETTLE:-3}            # seconds the helper stays after the confirmation
+HELPER_WAIT=${LIMIT_RESUME_HELPER_WAIT:-20} # seconds to wait for the confirmation
+MAX_AHEAD=86400                             # a reset further away than this (a weekly limit) is not waited for
+MAX_IN_A_ROW=3                              # automatic continues with no typed prompt in between
+UUID='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+sid=${1:-} transcript=${2:-} reset=${3:-}
+[[ $sid =~ $UUID ]] && [ -f "$transcript" ] && [[ $reset =~ ^[0-9]+$ ]] || exit 2
+mkdir -p "$STATE" && chmod 700 "${STATE%/*}" "$STATE"
+
+log() { printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sid" "$*" >> "$STATE/log"; }
+
+# entry <key> <value>: the first entry of `claude agents --json` whose key has that value, as one flat
+# object; status 1 when there is none.
+entry() {
+  local o
+  while read -r o; do
+    [ "$(json_str "$o" "$1" || true)" == "$2" ] && { printf '%s' "$o"; return 0; }
+  done < <(claude agents --json 2>/dev/null | tr -d '\n' | grep -oE '\{[^{}]*\}' || true)
+  return 1
+}
+
+# True when the session is a background session whose process is alive. Sets $status (busy, idle, ...).
+running_background() {
+  local o
+  o=$(entry sessionId "$sid") || return 1
+  [ "$(json_str "$o" kind || true)" == "background" ] && json_num "$o" pid > /dev/null || return 1
+  status=$(json_str "$o" status || true)
+}
+
+# True when the session has handed off: watch.sh noted its successor's name in warned/, and a session by that
+# name exists. Sets $successor. A session that stopped before its successor started still gets its continue.
+handed_off() {
+  read -r successor 2> /dev/null < "${STATE%/*}/warned/$sid" && [ -n "$successor" ] && entry name "$successor" > /dev/null
+}
+
+# The last main-thread assistant line of the transcript: what the session's latest turn ended with.
+last_turn() { tail -n 400 "$transcript" | grep '"type":"assistant"' | grep -v '"isSidechain":true' | tail -1; }
+
+# True when the given turn ended on a usage limit: a rate-limit API error.
+limit_stop() { [[ $1 == *'"isApiErrorMessage":true'* && $1 == *'"error":"rate_limit"'* ]]; }
+
+# How many continue prompts were sent to this session since somebody last typed one. A typed prompt carrying
+# the continue text is one of ours that Claude Code recorded as typed, so it doesn't start the count again.
+in_a_row() {
+  local typed human=""
+  typed=$(grep -a '"promptSource":"typed"' "$transcript" | grep -avF "$PROMPT" | tail -1)
+  [ -n "$typed" ] && human=$(json_str "$typed" timestamp || true)
+  [ -f "$STATE/$sid.sent" ] || { echo 0; return; }
+  awk -v human="$human" '$1 > human { n++ } END { print n + 0 }' "$STATE/$sid.sent"
+}
+
+# True while this process is the session's current waiter.
+mine() { local pid; read -r pid _ 2> /dev/null < "$STATE/$sid.pid" && [ "$pid" == "$$" ]; }
+
+# Sends the prompt into the running session. `claude --resume <id> "<prompt>"` delivers it as the session's
+# next turn and then attaches, but only when it has a terminal, so it runs under `script`. The helper's input
+# is a FIFO held open, so it never sees end-of-file; once the confirmation is on screen it is ended by signal.
+# What it captured is the session's screen, so that file is deleted either way. Sets $reason on failure.
+send() {
+  local out="$STATE/$sid.out" fifo="$STATE/$sid.in" helper tries=$((HELPER_WAIT * 2)) sent=1
+  command -v script > /dev/null 2>&1 || { reason="no script command to give claude a terminal"; return 1; }
+  rm -f "$out" "$fifo"
+  mkfifo "$fifo" || { reason="could not create $fifo"; return 1; }
+  exec 9<> "$fifo"
+  if script --version 2> /dev/null | grep -q util-linux; then
+    # util-linux script runs its command through $SHELL. /bin/sh keeps the user's login shell and its startup
+    # files out of it, and exec makes claude script's own child, so the SIGTERM below reaches claude itself.
+    SHELL=/bin/sh script -qfec "exec claude --resume $sid '$PROMPT'" /dev/null <&9 > "$out" 2>&1 &
+  else # BSD script (macOS) runs the command itself, with no shell: untested
+    script -q /dev/null claude --resume "$sid" "$PROMPT" <&9 > "$out" 2>&1 &
+  fi
+  helper=$!
+  while [ "$tries" -gt 0 ] && kill -0 "$helper" 2> /dev/null && ! grep -aq 'Sent your prompt' "$out" 2> /dev/null; do
+    sleep 0.5
+    tries=$((tries - 1))
+  done
+  if grep -aq 'Sent your prompt' "$out" 2> /dev/null; then
+    sent=0
+    sleep "$SETTLE"
+  else
+    reason=$(tr -cd '\11\12\40-\176' < "$out" 2> /dev/null | grep -o 'Your prompt was not sent[^.]*' | head -1)
+    [ -n "$reason" ] || reason="no confirmation from claude within ${HELPER_WAIT}s"
+  fi
+  kill "$helper" 2> /dev/null
+  wait "$helper" 2> /dev/null
+  exec 9>&-
+  rm -f "$out" "$fifo"
+  return "$sent"
+}
+
+limit_stop "$(last_turn)" || { log "skip: the last turn did not end on a usage limit"; exit 0; }
+running_background || { log "skip: not a running background session"; exit 0; }
+! handed_off || { log "skip: this session handed off to $successor"; exit 0; }
+[ $((reset - $(date +%s))) -le "$MAX_AHEAD" ] || { log "skip: the reset is more than 24 hours away"; exit 0; }
+[ "$(in_a_row)" -lt "$MAX_IN_A_ROW" ] \
+  || { log "skip: $MAX_IN_A_ROW automatic continues in a row, waiting for a typed prompt"; exit 0; }
+
+echo "$$ $reset" > "$STATE/$sid.pid"
+trap 'mine && rm -f "$STATE/$sid.pid"' EXIT
+log "waiting for the reset at $reset (+${MARGIN}s)"
+target=$((reset + MARGIN))
+while left=$((target - $(date +%s))) && [ "$left" -gt 0 ]; do
+  sleep "$((left < POLL ? left : POLL))"
+  mine || { log "skip: a newer waiter took over"; exit 0; }
+done
+
+running_background || { log "skip: not a running background session"; exit 0; }
+[ "$status" != "busy" ] || { log "skip: the session is busy"; exit 0; }
+# Still stopped at this limit: the latest turn is a usage-limit stop with this reset. A session that woke up
+# and hit the same limit again is still stopped here; a reply or another limit means it moved on.
+turn=$(last_turn)
+limit_stop "$turn" && [ "$(json_num "$turn" resetsAt || true)" == "$reset" ] \
+  || { log "skip: the session already moved on"; exit 0; }
+if send; then
+  date -u +%Y-%m-%dT%H:%M:%SZ >> "$STATE/$sid.sent"
+  log "sent the continue prompt"
+else
+  log "FAILED to send: $reason"
+fi

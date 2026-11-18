@@ -1,6 +1,14 @@
 {
-  "description": "Watch remaining context; below the threshold, tell the session to hand off to a successor.",
+  "description": "Watch remaining context; below the threshold, tell the session to hand off to a successor. After a usage-limit stop, start the waiter that continues a background session once the limit resets.",
   "hooks": {
+    "StopFailure": [
+      {
+        "matcher": "rate_limit",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/limit-stop.sh\"", "timeout": 30 }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

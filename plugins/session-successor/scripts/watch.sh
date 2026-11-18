@@ -35,6 +35,7 @@ mkdir -p "$STATE/warned" "$STATE/prompts"
 
 cwd=$(field cwd)
 new=$("$SCRIPTS/successor" name "$transcript" "$cwd")
+echo "$new" > "$STATE/warned/$sid" # the successor's name: once it runs, limit-resume leaves this session alone
 old=$("$SCRIPTS/successor" title "$transcript")
 prompt="$STATE/prompts/$new.md"
 
