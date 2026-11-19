@@ -1,8 +1,8 @@
 #!/bin/bash
-# Hook (StopFailure, matcher rate_limit): a turn ended on a rate limit. When that was a usage limit with a
-# known reset time, starts the waiter (scripts/limit-resume) that sends a background session a continue
-# prompt just after the reset. Makes no `claude` call and returns once the stop's line is in the transcript
-# (at most 5 seconds); the waiter does the checking.
+# Hook (StopFailure, matcher rate_limit; Claude Code runs it in the background with asyncRewake): a turn ended
+# on a rate limit. When that was a usage limit with a known reset time, it hands over to the waiter
+# (scripts/limit-resume), which wakes a background session with a continue prompt just after the reset. It
+# makes no `claude` call itself; the waiter does the checking.
 input=$(cat)
 [ "${CLAUDE_PLUGIN_OPTION_LIMIT_RESUME:-on}" == "on" ] || exit 0
 STATE="$HOME/.claude/session-successor/limits"
@@ -43,12 +43,7 @@ if read -r pid waiting 2> /dev/null < "$STATE/$sid.pid" && [ "$waiting" == "$res
   exit 0
 fi
 
-# setsid puts the waiter in a session of its own, so it outlives the hook. Not nohup as well: the waiter and
-# the claude it starts would then ignore hangups, and the hidden terminal's hangup is what ends anything that
-# claude leaves running. Without setsid (macOS), nohup is all there is.
-if command -v setsid > /dev/null 2>&1; then
-  setsid "$SCRIPTS/limit-resume" "$sid" "$transcript" "$reset" > /dev/null 2>&1 &
-else
-  nohup "$SCRIPTS/limit-resume" "$sid" "$transcript" "$reset" > /dev/null 2>&1 &
-fi
-exit 0
+# The waiter takes over this process. Claude Code runs this hook in the background (asyncRewake in hooks.json),
+# so the wait blocks nothing, and when the waiter exits with status 2, Claude Code wakes the session's model
+# with the text it printed.
+exec "$SCRIPTS/limit-resume" "$sid" "$transcript" "$reset"

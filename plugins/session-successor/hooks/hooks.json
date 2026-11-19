@@ -5,7 +5,7 @@
       {
         "matcher": "rate_limit",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/limit-stop.sh\"", "timeout": 30 }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/limit-stop.sh\"", "asyncRewake": true, "timeout": 90000 }
         ]
       }
     ],

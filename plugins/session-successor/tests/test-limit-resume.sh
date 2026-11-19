@@ -1,44 +1,26 @@
 #!/usr/bin/env bash
-# Checks scripts/limit-resume and scripts/limit-stop.sh against a stand-in `claude` and sample transcript
-# lines. Run: bash plugins/session-successor/tests/test-limit-resume.sh (about a minute; needs `script` from util-linux).
+# Checks scripts/limit-stop.sh (the StopFailure hook) and scripts/limit-resume (the waiter it hands over to)
+# against a stand-in `claude` and sample transcript lines. Run: bash plugins/session-successor/tests/test-limit-resume.sh
+# (about 40 s).
 root=$(cd "$(dirname "$0")/.." && pwd); fail=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 SID=11111111-2222-4333-8444-555555555555
+PROMPT='Your claude.ai usage limit has reset. Continue the task you were working on when the limit was reached; do not repeat work that is already complete.'
 
-# Stand-in for the claude CLI. `agents --json` prints the listing in $FAKE_AGENTS. `--resume <id> <prompt>`
-# records both arguments in $FAKE_CALLS, then behaves like the real command: without a terminal on its input
-# and output it sends nothing; otherwise it confirms (not with $FAKE_SILENT set) and stays attached, or
-# refuses when $FAKE_REFUSE is set. While attached it reads the terminal and records how it ends
-# ($FAKE_SIGNALS), any end-of-file it reads ($FAKE_EOF), and its pid with that of a process it started, which
-# only the terminal's hangup ends ($FAKE_PIDS). $FAKE_IGNORE_TERM makes it ignore SIGTERM.
+# Stand-in for the claude CLI: `agents --json` prints the listing in $FAKE_AGENTS. Any other call, such as an
+# attempt to hand the session a prompt, is recorded in $FAKE_CALLS and fails.
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/claude" <<'EOF'
 #!/bin/bash
 [ -n "${FAKE_LOG:-}" ] && echo "$*" >> "$FAKE_LOG"
 case "$1" in
   agents) cat "$FAKE_AGENTS" 2>/dev/null ;;
-  --resume)
-    printf '%s\n%s\n' "$2" "$3" >> "$FAKE_CALLS"
-    [ -t 0 ] && [ -t 1 ] || { echo "Your prompt was not sent: no terminal"; exit 1; }
-    if [ -n "${FAKE_REFUSE:-}" ]; then
-      echo "This session is running in the background. Your prompt was not sent to it: it is waiting on your answer."
-      exit 1
-    fi
-    trap 'echo TERM >> "$FAKE_SIGNALS"; exit 143' TERM
-    trap 'echo HUP >> "$FAKE_SIGNALS"; exit 129' HUP
-    [ -z "${FAKE_IGNORE_TERM:-}" ] || trap '' TERM
-    sleep 30 & echo "$$ $!" >> "$FAKE_PIDS"
-    [ -n "${FAKE_SILENT:-}" ] || echo "Sent your prompt to the background session (${2%%-*}); opening it…"
-    read -r -t 30 _; [ $? -ne 1 ] || echo "end of input" >> "$FAKE_EOF" ;;
+  *) echo "$*" >> "${FAKE_CALLS:-/dev/null}"; exit 1 ;;
 esac
 EOF
 chmod +x "$tmp/bin/claude"
-# The user's login shell, whose startup files could change what runs (even put the real claude first on PATH).
-# The helper must never go through it.
-printf '#!/bin/sh\necho "$*" >> "%s/login-shell-used"\nexit 1\n' "$tmp" > "$tmp/bin/login-shell"
-chmod +x "$tmp/bin/login-shell"
 
 # --- sample data, shaped like what Claude Code 2.1.327 writes -------------------------------------------------
 
@@ -70,16 +52,18 @@ listing() { # listing <file> <kind> <pid|""> <status|""> <state|""> : `claude ag
 
 n=0
 newcase() { n=$((n + 1)); c="$tmp/case$n"; mkdir -p "$c/home"; L="$c/home/.claude/session-successor/limits"; }
-waiter() { # waiter <reset epoch> [session id] [transcript] : runs limit-resume to its end (15 s at most), short timings
-  HOME="$c/home" PATH="$tmp/bin:$PATH" SHELL="$tmp/bin/login-shell" FAKE_AGENTS="$c/agents.json" FAKE_CALLS="$c/calls" \
-    FAKE_PIDS="$c/pids" FAKE_EOF="$c/eof" FAKE_SIGNALS="$c/signals" \
-    LIMIT_RESUME_MARGIN=${LIMIT_RESUME_MARGIN:-0} LIMIT_RESUME_POLL=1 LIMIT_RESUME_SETTLE=0 \
-    LIMIT_RESUME_HELPER_WAIT=${LIMIT_RESUME_HELPER_WAIT:-5} \
-    timeout 15 bash "$root/scripts/limit-resume" "${2:-$SID}" "${3:-$c/transcript.jsonl}" "$1"
+waiter() { # waiter <reset epoch> [session id] [transcript] : runs limit-resume to its end (15 s at most) with short
+  # timings. $st (also in $c/st) is its exit status, $c/err the text it gives Claude Code to wake the session with.
+  HOME="$c/home" PATH="$tmp/bin:$PATH" FAKE_AGENTS="$c/agents.json" FAKE_CALLS="$c/calls" \
+    LIMIT_RESUME_MARGIN=${LIMIT_RESUME_MARGIN:-0} LIMIT_RESUME_POLL=1 \
+    timeout 15 bash "$root/scripts/limit-resume" "${2:-$SID}" "${3:-$c/transcript.jsonl}" "$1" > "$c/out" 2> "$c/err"
+  st=$?; echo "$st" > "$c/st"
 }
-gone() { # gone : the stand-in ran, and neither it nor the process it started is still running
-  sleep 0.3; [ -s "$c/pids" ] || return 1
-  local p; for p in $(cat "$c/pids"); do ! kill -0 "$p" 2> /dev/null || return 1; done
+woke() { # status 2 with exactly Claude Code's own continue prompt, which asyncRewake hands to the session's model
+  [ "$st" -eq 2 ] && [ "$(cat "$c/err")" = "$PROMPT" ] && [ ! -s "$c/out" ]
+}
+stood_down() { # stood_down <log text> : status 0, nothing to wake the session with, and the reason in the log
+  [ "$st" -eq 0 ] && [ ! -s "$c/err" ] && [ ! -s "$c/out" ] && grep -q "$1" "$L/log"
 }
 now=$(date +%s); past=$((now - 100))
 
@@ -87,110 +71,95 @@ now=$(date +%s); past=$((now - 100))
 
 newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 waiter "$past"
-check "R1 sends to a stopped background session"   '[ "$(sed -n 1p "$c/calls" 2>/dev/null)" = "$SID" ] && [ "$(wc -l < "$L/$SID.sent")" -eq 1 ] && grep -q "sent the continue prompt" "$L/log"'
-check "R1 sends exactly once"                      '[ "$(wc -l < "$c/calls")" -eq 2 ]'
-check "R2 the prompt is Claude Code's own continuation text" '[ "$(sed -n 2p "$c/calls" 2>/dev/null)" = "Your claude.ai usage limit has reset. Continue the task you were working on when the limit was reached; do not repeat work that is already complete." ]'
+check "R1 a stopped background session is woken with Claude Code's own continue prompt" 'woke && grep -q "woke the session" "$L/log"'
+check "R2 the wake is counted once, and nothing goes through claude"  '[ "$(wc -l < "$L/$SID.sent")" -eq 1 ] && [ ! -e "$c/calls" ]'
 check "R3 leaves only the log and the send record"  '[ -d "$L" ] && [ -z "$(ls "$L" | grep -v -e "^log$" -e "^$SID\.sent$")" ]'
 
 newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" interactive 5151 idle ""
 waiter "$past"
-check "R4 an interactive session gets nothing"     '[ ! -e "$c/calls" ] && grep -q "not a running background session" "$L/log"'
+check "R4 an interactive session gets nothing"     'stood_down "not a running background session"'
 
 newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background "" "" blocked
 waiter "$past"
-check "R5 a background session whose process is gone gets nothing" '[ ! -e "$c/calls" ] && grep -q "not a running background session" "$L/log"'
+check "R5 a background session whose process is gone gets nothing" 'stood_down "not a running background session"'
 
 newcase; { limit_line 2026-11-17T03:18:22.075Z "$past"; reply_line 2026-11-17T03:20:00.000Z; } > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle done
 waiter "$past"
-check "R6 a session whose last turn was not a limit stop gets nothing" '[ ! -e "$c/calls" ] && grep -q "did not end on a usage limit" "$L/log"'
+check "R6 a session whose last turn was not a limit stop gets nothing" 'stood_down "did not end on a usage limit"'
 
 newcase; soon=$(($(date +%s) + 3)); limit_line 2026-11-17T03:18:22.075Z "$soon" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 ( sleep 1; reply_line 2026-11-17T03:19:00.000Z >> "$c/transcript.jsonl" ) &
 waiter "$soon"; wait
-check "R7 a session that got going during the wait gets nothing" '[ ! -e "$c/calls" ] && grep -q "already moved on" "$L/log"'
+check "R7 a session that got going during the wait gets nothing" 'stood_down "already moved on"'
 
 newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 busy working
 waiter "$past"
-check "R8 a busy session gets nothing"             '[ ! -e "$c/calls" ] && grep -q "the session is busy" "$L/log"'
+check "R8 a busy session gets nothing"             'stood_down "the session is busy"'
 
 newcase; limit_line 2026-11-17T03:18:22.075Z $((now + 90000)) > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 SECONDS=0; waiter $((now + 90000))
-check "R9 a reset more than 24 hours away is not waited for" '[ "$SECONDS" -lt 5 ] && [ ! -e "$c/calls" ] && grep -q "more than 24 hours away" "$L/log"'
+check "R9 a reset more than 24 hours away is not waited for" '[ "$SECONDS" -lt 5 ] && stood_down "more than 24 hours away"'
 
 three_sends() { mkdir -p "$L"; printf '%s\n' 2026-11-17T04:00:00Z 2026-11-17T09:00:00Z 2026-11-17T14:00:00Z > "$L/$SID.sent"; }
 newcase; { typed_line 2026-11-17T01:00:00.000Z "start the task"; limit_line 2026-11-17T15:30:00.000Z "$past"; } > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 three_sends; waiter "$past"
-check "R10 the fourth continue in a row is not sent" '[ ! -e "$c/calls" ] && grep -q "3 automatic continues in a row" "$L/log"'
+check "R10 the fourth continue in a row is not sent" 'stood_down "3 automatic continues in a row"'
 
 newcase; { typed_line 2026-11-17T01:00:00.000Z "start the task"; typed_line 2026-11-17T15:00:00.000Z "carry on please"; limit_line 2026-11-17T15:30:00.000Z "$past"; } > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 three_sends; waiter "$past"
-check "R11 a typed prompt starts the count again"  '[ "$(sed -n 1p "$c/calls" 2>/dev/null)" = "$SID" ] && [ "$(wc -l < "$L/$SID.sent")" -eq 4 ]'
+check "R11 a typed prompt starts the count again"  'woke && [ "$(wc -l < "$L/$SID.sent")" -eq 4 ]'
 
-newcase; { typed_line 2026-11-17T01:00:00.000Z "start the task"; typed_line 2026-11-17T15:00:00.000Z "Your claude.ai usage limit has reset. Continue the task you were working on when the limit was reached; do not repeat work that is already complete."; limit_line 2026-11-17T15:30:00.000Z "$past"; } > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
+newcase; { typed_line 2026-11-17T01:00:00.000Z "start the task"; typed_line 2026-11-17T15:00:00.000Z "$PROMPT"; limit_line 2026-11-17T15:30:00.000Z "$past"; } > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 three_sends; waiter "$past"
-check "R11b the continue prompt itself does not start the count again" '[ ! -e "$c/calls" ] && grep -q "3 automatic continues in a row" "$L/log"'
+check "R11b the continue prompt typed in does not start the count again" 'stood_down "3 automatic continues in a row"'
 
 newcase; soon=$(($(date +%s) + 3)); limit_line 2026-11-17T03:18:22.075Z "$soon" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 ( sleep 1; echo "999999 1" > "$L/$SID.pid" ) &
 waiter "$soon"; wait
-check "R12 a waiter replaced by a newer one sends nothing and leaves the newer one's file" '[ ! -e "$c/calls" ] && [ "$(cat "$L/$SID.pid" 2>/dev/null)" = "999999 1" ] && grep -q "a newer waiter took over" "$L/log"'
+check "R12 a waiter replaced by a newer one stands down and leaves the newer one's file" 'stood_down "a newer waiter took over" && [ "$(cat "$L/$SID.pid" 2>/dev/null)" = "999999 1" ]'
 
 newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
-FAKE_REFUSE=1 waiter "$past"
-check "R13 a refused prompt is logged and not counted" '[ -s "$c/calls" ] && [ ! -e "$L/$SID.sent" ] && grep -q "FAILED to send" "$L/log" && grep -q "not sent to it" "$L/log"'
-
-newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
-waiter "$past" "not-a-session-id"; a=$?; waiter "$past" "$SID" "$c/missing.jsonl"; b=$?; waiter "soon"; d=$?
-check "R14 bad arguments exit with status 2"       '[ "$a" -eq 2 ] && [ "$b" -eq 2 ] && [ "$d" -eq 2 ] && [ ! -e "$c/calls" ]'
+waiter "$past" "not-a-session-id"; a=$st; waiter "$past" "$SID" "$c/missing.jsonl"; b=$st; waiter "soon"; d=$st
+check "R14 bad arguments exit with status 1, never 2, which would wake the session" '[ "$a" -eq 1 ] && [ "$b" -eq 1 ] && [ "$d" -eq 1 ]'
 
 newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; : > "$c/agents.json"
 waiter "$past"
-check "R15 an empty session listing sends nothing" '[ ! -e "$c/calls" ] && grep -q "not a running background session" "$L/log"'
+check "R15 an empty session listing gets nothing"  'stood_down "not a running background session"'
 
 newcase; { limit_line 2026-11-17T03:18:22.075Z "$past"; reply_line 2026-11-17T03:19:00.000Z true; } > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 waiter "$past"
-check "R16 a subagent's later line does not count as the session moving on" '[ "$(sed -n 1p "$c/calls" 2>/dev/null)" = "$SID" ]'
+check "R16 a subagent's later line does not count as the session moving on" 'woke'
 
 newcase; soon=$(($(date +%s) + 3)); limit_line 2026-11-17T03:18:22.075Z "$soon" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 ( sleep 1; limit_line 2026-11-17T03:19:00.000Z "$soon" >> "$c/transcript.jsonl" ) &
 waiter "$soon"; wait
-check "R17 a second stop at the same limit during the wait still gets one continue" '[ "$(sed -n 1p "$c/calls" 2>/dev/null)" = "$SID" ] && [ "$(wc -l < "$c/calls")" -eq 2 ] && grep -q "sent the continue prompt" "$L/log"'
+check "R17 a second stop at the same limit during the wait still gets its continue" 'woke'
 
 newcase; soon=$(($(date +%s) + 3)); limit_line 2026-11-17T03:18:22.075Z "$soon" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 ( sleep 1; limit_line 2026-11-17T03:19:00.000Z $((soon + 18000)) >> "$c/transcript.jsonl" ) &
 waiter "$soon"; wait
-check "R17b a stop at a later limit during the wait gets nothing from this waiter" '[ ! -e "$c/calls" ] && grep -q "already moved on" "$L/log"'
-
-newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
-waiter "$past"
-check "R18 the prompt reaches claude in a terminal, never followed by end-of-file" '[ "$(sed -n 1p "$c/calls" 2>/dev/null)" = "$SID" ] && grep -q "sent the continue prompt" "$L/log" && [ ! -e "$c/eof" ]'
-check "R19 then claude is ended with SIGTERM and nothing of the helper is left" '[ "$(sed -n 1p "$c/signals" 2>/dev/null)" = TERM ] && gone'
-
-newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
-FAKE_SILENT=1 LIMIT_RESUME_HELPER_WAIT=2 waiter "$past"
-check "R20 a prompt never confirmed is logged as FAILED, not counted, and leaves nothing running" '[ -s "$c/calls" ] && [ ! -e "$L/$SID.sent" ] && grep -q "FAILED to send: no confirmation" "$L/log" && gone'
+check "R17b a stop at a later limit during the wait gets nothing from this waiter" 'stood_down "already moved on"'
 
 newcase; reset=$(date +%s); limit_line 2026-11-17T03:18:22.075Z "$reset" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 LIMIT_RESUME_MARGIN=3 waiter "$reset" & w=$!
-sleep 1; early=$(cat "$c/calls" 2> /dev/null); wait "$w"
-check "R21 nothing is sent before the margin after the reset has passed" '[ -z "$early" ] && [ "$(sed -n 1p "$c/calls" 2>/dev/null)" = "$SID" ]'
-
-newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
-FAKE_IGNORE_TERM=1 waiter "$past"; st=$?
-check "R22 a claude that ignores SIGTERM neither holds up the waiter nor outlives it" '[ "$st" -eq 0 ] && grep -q "sent the continue prompt" "$L/log" && gone'
-
-check "R23 no helper above ran through the user's login shell" '[ ! -e "$tmp/login-shell-used" ]'
+sleep 1; early=$(cat "$c/err" 2> /dev/null); wait "$w"; st=$(cat "$c/st")
+check "R21 nothing happens before the margin after the reset has passed" '[ -z "$early" ] && woke'
 
 handed_off_to() { mkdir -p "$c/home/.claude/session-successor/warned"; echo "$1" > "$c/home/.claude/session-successor/warned/$SID"; }
 newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 sed -i 's/"other-3"/"app-3"/' "$c/agents.json"; handed_off_to app-3
 waiter "$past"
-check "R24 a session whose successor already runs gets nothing" '[ ! -e "$c/calls" ] && grep -q "handed off to app-3" "$L/log"'
+check "R24 a session whose successor already runs gets nothing" 'stood_down "handed off to app-3"'
 
 newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
 handed_off_to app-3
 waiter "$past"
-check "R24b a session stopped before its successor started still gets its continue" '[ "$(sed -n 1p "$c/calls" 2>/dev/null)" = "$SID" ]'
+check "R24b a session stopped before its successor started still gets its continue" 'woke'
+
+newcase; limit_line 2026-11-17T03:18:22.075Z "$past" > "$c/transcript.jsonl"
+HOME="$c/home" PATH=/usr/bin:/bin LIMIT_RESUME_MARGIN=0 LIMIT_RESUME_POLL=1 \
+  timeout 15 bash "$root/scripts/limit-resume" "$SID" "$c/transcript.jsonl" "$past" > "$c/out" 2> "$c/err"; st=$?
+check "R25 without a claude command it stands down (status 0, never 2)" 'stood_down "not a running background session"'
 
 # --- limit-stop.sh, the hook ------------------------------------------------------------------------------
 
@@ -215,6 +184,11 @@ hook "$(hook_input "$SID" "$c/transcript.jsonl")"
 check "H1 a usage-limit stop starts the waiter with session, transcript and reset" '[ "$(started)" = "$SID $c/transcript.jsonl 1794889200" ]'
 check "H9 the hook prints nothing and exits 0"     '[ "$st" -eq 0 ] && [ -z "$out" ]'
 check "H10 the hook itself never calls claude"     '[ "$st" -eq 0 ] && [ ! -e "$c/claude-log" ]'
+
+hookcase; limit_line "$(ago 0)" 1794889200 > "$c/transcript.jsonl"
+printf '#!/bin/bash\necho "$*" > "%s/started"\necho "the wake text" >&2\nexit 2\n' "$c" > "$c/scripts/limit-resume"
+hook "$(hook_input "$SID" "$c/transcript.jsonl")"
+check "H12 the hook hands over to the waiter in its own process: the waiter's status and text are the hook's" '[ "$st" -eq 2 ] && [ "$out" = "the wake text" ] && [ -s "$c/started" ]'
 
 hookcase; limit_line "$(ago 0)" 1794889200 > "$c/transcript.jsonl"
 CLAUDE_PLUGIN_OPTION_LIMIT_RESUME=off hook "$(hook_input "$SID" "$c/transcript.jsonl")"
@@ -263,13 +237,23 @@ hookcase; limit_line "$(ago 3600)" $(($(date +%s) - 1800)) > "$c/transcript.json
 hook "$(hook_input "$SID" "$c/transcript.jsonl")"; wait
 check "H11b a limit stop whose line lands late starts the waiter with its own reset" '[ "$(started)" = "$SID $c/transcript.jsonl $later" ]'
 
+# Claude Code runs the hook in the background and wakes the session's model when it exits 2, so the hook must be
+# declared that way, with a timeout longer than the longest wait (24 hours plus the margin).
+rewake_hook_declared() { python3 -I - "$root/hooks/hooks.json" <<'EOF'
+import json, sys
+groups = json.load(open(sys.argv[1]))["hooks"]["StopFailure"]
+hooks = [h for g in groups if g.get("matcher") == "rate_limit" for h in g["hooks"]
+         if h.get("command", "").endswith('scripts/limit-stop.sh"')]
+sys.exit(0 if len(hooks) == 1 and hooks[0].get("asyncRewake") is True and hooks[0].get("timeout", 0) > 86400 + 90 else 1)
+EOF
+}
+check "C1 hooks.json runs limit-stop.sh on rate_limit stops as an asyncRewake hook that can wait over 24 hours" 'rewake_hook_declared'
+
 # --- the hook and the waiter together -------------------------------------------------------------------------
 
-chain() { # chain : runs the real hook on this case's transcript; the hook starts the real waiter, detached
-  hook_input "$SID" "$c/transcript.jsonl" | HOME="$c/home" PATH="$tmp/bin:$PATH" SHELL="$tmp/bin/login-shell" \
-    FAKE_AGENTS="$c/agents.json" FAKE_CALLS="$c/calls" FAKE_PIDS="$c/pids" FAKE_EOF="$c/eof" FAKE_SIGNALS="$c/signals" \
-    LIMIT_RESUME_MARGIN=0 LIMIT_RESUME_POLL=1 LIMIT_RESUME_SETTLE=0 LIMIT_RESUME_HELPER_WAIT=5 \
-    bash "$root/scripts/limit-stop.sh" > /dev/null 2>&1
+chain() { # chain <out file> <err file> : runs the real hook on this case's transcript; it hands over to the real waiter
+  hook_input "$SID" "$c/transcript.jsonl" | HOME="$c/home" PATH="$tmp/bin:$PATH" FAKE_AGENTS="$c/agents.json" \
+    FAKE_CALLS="$c/calls" LIMIT_RESUME_MARGIN=0 LIMIT_RESUME_POLL=1 timeout 20 bash "$root/scripts/limit-stop.sh" > "$1" 2> "$2"
 }
 logged() { # logged <text> : waits up to 15 s for the case's log to contain it
   local i=0
@@ -277,11 +261,13 @@ logged() { # logged <text> : waits up to 15 s for the case's log to contain it
 }
 
 newcase; soon=$(($(date +%s) + 3)); limit_line "$(ago 0)" "$soon" > "$c/transcript.jsonl"; listing "$c/agents.json" background 5151 idle blocked
-chain; logged "waiting for the reset"
-limit_line "$(ago 0)" "$soon" >> "$c/transcript.jsonl"; chain # woken up, the session hits the same limit again
-logged "sent the continue prompt"; sleep 0.5
-check "X1 through the hook: a second stop at the same limit adds no waiter, and one continue is sent" '[ "$(grep -c "^$SID$" "$c/calls")" -eq 1 ] && [ "$(grep -c "waiting for the reset" "$L/log")" -eq 1 ] && [ "$(grep -c "sent the continue prompt" "$L/log")" -eq 1 ]'
-check "X2 through the hook: afterwards nothing of the helper is left running" 'gone && [ ! -e "$L/$SID.pid" ] && [ ! -e "$tmp/login-shell-used" ]'
+( chain "$c/out1" "$c/err1"; echo $? > "$c/st1" ) &
+first=$!; logged "waiting for the reset"
+limit_line "$(ago 0)" "$soon" >> "$c/transcript.jsonl" # woken up, the session hits the same limit again
+SECONDS=0; chain "$c/out2" "$c/err2"; st2=$?; quick=$SECONDS
+wait "$first"
+check "X1 through the hook: a second stop at the same limit stands down at once" '[ "$st2" -eq 0 ] && [ "$quick" -lt 3 ] && [ ! -s "$c/err2" ] && [ ! -s "$c/out2" ]'
+check "X2 through the hook: the first stop's hook wakes the session once" '[ "$(cat "$c/st1")" -eq 2 ] && [ "$(cat "$c/err1")" = "$PROMPT" ] && [ ! -s "$c/out1" ] && [ "$(grep -c "woke the session" "$L/log")" -eq 1 ] && [ ! -e "$L/$SID.pid" ] && [ ! -e "$c/calls" ]'
 
 # --- watch.sh records the successor's name, which limit-resume reads ------------------------------------------
 

@@ -109,8 +109,9 @@ shell prompt, then the command. These come from the terminal plugin's newer fron
 
 ## Continuing after a usage limit
 
-Added in 0.3.0. Every fact in this section was checked against Claude Code 2.1.327 on Linux, with
-throwaway background sessions.
+Added in 0.3.0; since 0.3.1 the session wakes itself (see "Waking the session"). Every fact in this
+section was checked against Claude Code 2.1.327 and 2.1.328 on Linux, with throwaway background
+sessions.
 
 **The gap.** Since 2.1.234 an interactive session that stops at a claude.ai usage limit waits and
 continues by itself after the reset. Claude Code's docs list where that wait is never offered:
@@ -128,13 +129,15 @@ already handles; a silent failure (every decision goes to `limits/log`).
 
 1. A turn ends on a usage limit, and Claude Code runs the plugin's `StopFailure` hook (matcher
    `rate_limit`): `scripts/limit-stop.sh`.
-2. The hook takes the reset time from the transcript and starts one detached waiter for the session:
-   `scripts/limit-resume`.
+2. The hook takes the reset time from the transcript and hands over to the waiter,
+   `scripts/limit-resume`, in its own process. Claude Code runs this hook in the background
+   (`asyncRewake`), so the wait blocks nothing.
 3. The waiter checks at once that the session is a running background session, then sleeps until 90
    seconds after the reset.
-4. It checks that the session is still stopped at that limit and sends it one prompt, the text Claude
-   Code itself uses: "Your claude.ai usage limit has reset. Continue the task you were working on when
-   the limit was reached; do not repeat work that is already complete."
+4. It checks that the session is still stopped at that limit and exits with status 2, printing the
+   text Claude Code itself uses: "Your claude.ai usage limit has reset. Continue the task you were
+   working on when the limit was reached; do not repeat work that is already complete." Claude Code
+   then wakes the session's model with that text.
 
 **The trigger is `StopFailure`.** It "runs instead of Stop when the turn ends due to an API error",
 and its matcher filters on the error type. In background sessions the hook ran for `rate_limit` (a
@@ -158,14 +161,13 @@ at once. So the hook takes only a line written in the 30 seconds before it start
 seconds for one, and logs it when none appears. 30 stays below the 90-second margin: the stop before
 a continue prompt is always older than that.
 
-**The hook stays fast; the waiter decides.** The hook makes no `claude` call: it validates its
-input, waits for the stop's line and starts the waiter with `setsid … &`. Claude Code runs a hook
-in a session of its own, ignoring only SIGQUIT, and a process started this way from a `StopFailure`
-hook in a background session was still running 15 seconds after the hook started. Not `nohup` as
-well: the waiter and the `claude` it starts would then ignore hangups, and a process that `claude`
-had started outlived the helper that way. Only where there is no `setsid` (macOS) does the hook use
-`nohup`. The waiter's first act is the kind check, so in an interactive session it exits within a
-second or two.
+**The hook waits in the background.** `asyncRewake` makes Claude Code run the hook in the background
+and wake the model when it exits with status 2, handing the model the hook's stderr. Its `timeout`,
+25 hours in `hooks.json`, covers the longest wait: 24 hours plus the margin. Claude Code runs the hook
+in the session's own folder, in a session of its own. The hook makes no `claude` call itself; the
+waiter's first act is the kind check, so in an interactive session it exits within a second or two.
+Every outcome other than the wake exits with status 0, and bad arguments with 1, never 2: status 2
+would wake the session.
 
 **Background sessions only, every one of them.** `claude agents --json` is the supported way to read
 session state from outside. The waiter needs the entry with this `sessionId` to say
@@ -178,21 +180,18 @@ off, it notes the successor's name in `warned/<session-id>`; once a session by t
 waiter leaves the old session stopped. A session that hit the limit halfway through its handoff, with
 no successor started yet, still gets its continue, so it can finish the handoff.
 
-**Delivering the prompt: `claude --resume <session-id> "<prompt>"` under a pseudo-terminal.** That
-command sends a prompt to a running background session as its next turn ("Sent your prompt to the
-background session (<id>); opening it…") and then attaches. The docs say it sends nothing and exits
-with status 1 when its input or output is piped or redirected, and there is no other way in: no
-`claude send`. So the waiter runs it under `script`, waits for the confirmation line and ends the
-helper with SIGTERM, which `script` passes on to `claude`; `script` itself kills a `claude` that
-ignores it about 2 seconds later (util-linux 2.41). `script` runs its command through `$SHELL`, so the
-waiter sets `SHELL=/bin/sh`, which keeps the user's login shell and its startup files out, and writes
-`exec claude …`, because `/bin/sh` (dash) does not hand over to the command by itself and `claude`
-would otherwise get only the terminal's hangup, never the SIGTERM. `claude --resume` also asks the
-workspace-trust question for the folder it runs in, and then never confirms. The waiter runs in the
-hook's folder, and Claude Code runs the hook in the session's own folder (checked live), which is
-trusted because the session runs there. The waiter never types into the session and never sends
-end-of-file. The session ran the new turn and survived the helper's death; it
-also worked while another client was attached (the IDE tab), and that client survived too.
+**Waking the session: the hook's own exit status, not `claude --resume`.** 0.3.0 handed the prompt over
+with `claude --resume <session-id> "<prompt>"` under a pseudo-terminal (`script`). That breaks
+whenever Claude Code updates itself. An update restarts the background service (the daemon), while a
+running session keeps its old build, and `claude --resume` then refuses from either side: the new
+build says the session "runs a different Claude Code build", the old one that "its background
+service runs a different Claude Code version". Updates landed on 6 of 10 days on the author's
+machine, so most sessions that run for hours meet one; the first real stop after 0.3.0 shipped did.
+With `asyncRewake` the whole wake stays inside the session's own process. Claude Code queues the
+hook's text as a task notification ("Stop hook feedback"), the same path a finished background task
+takes, and the session runs it as its next turn. Nothing outside the session sends anything, so no
+build has to match anything. The model sees the text after a fixed prefix: `Stop hook blocking error
+from command "StopFailure:rate_limit": Your claude.ai usage limit has reset. …`.
 
 **One waiter per session, for its latest limit.** `limits/<session-id>.pid` holds the waiter's pid
 and the reset it waits for. The hook starts nothing when a live waiter already waits for the same
@@ -200,7 +199,7 @@ reset, so repeated stops at one limit (background tasks waking the session) cost
 waiter covers them all. A stop at a different limit starts a new waiter, and the old one, finding
 another pid in the file, exits.
 
-**Still stopped?** At the reset the waiter sends only if the session is still a running, idle
+**Still stopped?** At the reset the waiter wakes the session only if it is still a running, idle
 background session whose latest turn ended on this same limit: the transcript's last main-thread
 assistant line is a usage-limit stop with the reset the waiter waits for. If you, a peer message or a
 finished background task got the session going, that line is a reply or a different stop, and the
@@ -210,7 +209,7 @@ after the reset; waiting 90 means that if a later version covers background sess
 there first and this waiter stands down.
 
 **The same limits Claude Code sets itself.** No wait when the reset is more than 24 hours away (a
-weekly limit). At most three automatic continues in a row: the waiter counts its own sends
+weekly limit). At most three automatic continues in a row: the waiter counts its own wakes
 (`limits/<session-id>.sent`) since the transcript's last typed prompt and stops at three. Should
 transcripts stop marking typed prompts, the count never resets and the cap becomes three per session:
 it fails closed.
@@ -221,7 +220,16 @@ after a long sleep; a background session has nobody at its prompt, so this one d
 
 **Approaches considered.**
 
-- *Hook, waiter, prompt* (built): no long-running service, and each part can be checked by itself.
+- *Hook, waiter, wake* (built): no long-running service, nothing sent from outside the session, and
+  each part can be checked by itself.
+- *`claude --resume` under a pseudo-terminal* (0.3.0): it can't reach a session started before a
+  Claude Code update; see "Waking the session".
+- *Stop the session and resume it on the current build*: once `claude stop <short id>` has really
+  stopped it, `claude --bg --resume <session-id> "<prompt>"` continues it in the background. But the
+  resumed session drops its launch flags (model, `--settings`, `--effort`), so a successor would lose
+  `"bgIsolation":"none"` and stop editing in place, and stopping kills the session's background tasks.
+- *Typing the prompt through `claude attach`*: it reaches any build, but it depends on how the screen
+  is drawn (an empty input box against an unsent draft) and types into whatever is there.
 - *`CLAUDE_CODE_RETRY_WATCHDOG=1` for successors*, Claude Code's unattended mode, in which the
   request itself waits for the reset. It works for a plain plan limit: with a 70-second reset the
   request waited and retried, and the variable reaches a background session through
@@ -242,10 +250,12 @@ after a long sleep; a background session has nobody at its prompt, so this one d
   not a TTY (`tty` → "not a tty"), and typing in those tabs never reaches the command.
 - Synthesising Ctrl+Shift+T: blocked on Wayland without `ydotool`/uinput, and it would type into
   whatever window has focus.
-- Restarting a stopped session with a prompt: after `claude stop <id>`,
-  `claude --bg --resume <session-id> --model … --settings … "<prompt>"` did not continue "under the
-  same ID" as its help says. It made a copy with a new id (SessionStart source `fork`), leaving two
-  rows with one name.
+- Restarting a session with a prompt after `claude stop <session-id>`: `claude stop` wants the short
+  id or the name. Given the full session id it answers "No session matching" and the session keeps
+  running, so `claude --bg --resume <session-id> "<prompt>"` then makes a copy with a new id, as its
+  help says it does for a running session.
+- `claude --resume <session-id> "<prompt>"` into a session started before a Claude Code update:
+  refused by the new build and by the session's own one alike (see "Waking the session").
 
 ## Testing notes
 
@@ -256,22 +266,21 @@ after a long sleep; a background session has nobody at its prompt, so this one d
   `claude --bg -n test --plugin-dir <copy> "<a prompt that runs one tool>"`.
 - From the repo root, `claude plugin validate .` and `claude plugin validate plugins/session-successor`
   check the manifests.
-- `bash plugins/session-successor/tests/test-limit-resume.sh` (about a minute) runs `limit-stop.sh`
-  and `limit-resume` against a fake `claude` and sample transcripts, each alone and the hook into the
-  waiter, plus the successor name `watch.sh` notes for the waiter. The fake `claude` refuses without a
-  terminal, records end-of-file and how it was ended, and starts a process of its own, so delivery is
-  checked too. The waiter's timings are shortened there with `LIMIT_RESUME_MARGIN`,
-  `LIMIT_RESUME_POLL`, `LIMIT_RESUME_SETTLE` and `LIMIT_RESUME_HELPER_WAIT` (seconds); nothing else
-  should set them.
+- `bash plugins/session-successor/tests/test-limit-resume.sh` (about 40 s) runs `limit-stop.sh` and
+  `limit-resume` against a fake `claude` and sample transcripts, each alone and the hook into the
+  waiter, plus the successor name `watch.sh` notes for the waiter and the `asyncRewake` declaration in
+  `hooks.json`. A wake is status 2 with exactly the continue text on stderr; anything else must exit 0
+  with nothing on stderr. The waiter's timings are shortened there with `LIMIT_RESUME_MARGIN` and
+  `LIMIT_RESUME_POLL` (seconds); nothing else should set them.
 - Live sessions that cost nothing: `claude --bg --model <a name that doesn't exist> …` ends its first
   turn with `model_not_found` before any tokens are used, which is enough to exercise hooks and
   prompt delivery. For a real `rate_limit` stop, point a session at a fake local API through
   `--settings '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:<port>","ANTHROPIC_AUTH_TOKEN":"dummy"}}'`
   and have it answer 429 with the `anthropic-ratelimit-unified-*` headers.
-- The whole chain, live: give the real `limit-stop.sh` a real-shaped hook input whose transcript is a
-  copy of a live background session's (one on a nonexistent model), with a fresh limit line appended
-  and `LIMIT_RESUME_MARGIN=2`. Run it from the session's folder, as Claude Code does, or
-  `claude --resume` stops at the trust question. On 2.1.327 it started the waiter, which sent the
-  continue prompt into the session and left nothing running.
+- The whole chain, live: copy the plugin, set its `StopFailure` matcher to `model_not_found`, and
+  start a session on a nonexistent model with `--plugin-dir <copy>` and
+  `--settings '{"env":{"LIMIT_RESUME_MARGIN":"5"}}'` (settings `env` does reach hooks). As soon as its
+  error line lands, append a fresh limit line to its transcript: the hook is still looking for one. On
+  2.1.328 the hook waited, woke the session, and the session ran the continue prompt as its next turn.
 - Not checked: the hook on a real subscriber limit stop (the transcript shape comes from real stops,
-  the hook was exercised with the fake API), and `script` on macOS.
+  the hook was exercised with the fake API), and macOS.

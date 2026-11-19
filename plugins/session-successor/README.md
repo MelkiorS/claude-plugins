@@ -35,9 +35,8 @@ The Claude Code plugin works alone; without the JetBrains plugin you attach your
 ## Install
 
 **Requirements:** Claude Code with background sessions (`claude --bg`, `claude attach`; tested
-with 2.1.318, and continuing after a usage limit with 2.1.327), `bash` and `git`; no `jq` needed.
-Continuing after a usage limit also uses `script` from util-linux, which most Linux systems have
-(minimal container images may not). Tested on Linux; macOS should work but is untested.
+with 2.1.318, and continuing after a usage limit with 2.1.328), `bash` and `git`; no `jq` needed.
+Tested on Linux; macOS should work but is untested.
 JetBrains plugin: any JetBrains IDE **2026.2+** with the bundled Terminal plugin (WebStorm,
 IntelliJ IDEA, PyCharm, ...).
 
@@ -103,15 +102,16 @@ Every successor is a background session, so without help it sits at the limit un
 
 With `limit_resume` on (the default):
 
-1. When a turn ends on a usage limit, the plugin reads the reset time from the transcript and starts a
-   small waiter for that session.
+1. When a turn ends on a usage limit, the plugin reads the reset time from the transcript, and a small
+   waiter for that session runs in the background.
 2. Ninety seconds after the reset, the waiter checks that the session is still a running background
    session stopped at that same limit. If you, a peer session or a finished background task already
    got it going, it does nothing. A session that woke up only to hit the same limit again is still
    stopped there, so it still gets its continue.
-3. It sends the session the prompt Claude Code itself uses: "Your claude.ai usage limit has reset.
+3. It wakes the session with the prompt Claude Code itself uses: "Your claude.ai usage limit has reset.
    Continue the task you were working on when the limit was reached; do not repeat work that is
-   already complete." A terminal tab attached to the session simply shows it carrying on.
+   already complete." The wake happens inside the session, so it still works after Claude Code has
+   updated itself. A terminal tab attached to the session simply shows it carrying on.
 
 This covers every background session the plugin runs in, not only successors, and leaves interactive
 sessions to Claude Code. The one exception is an old session that has already handed off: its successor
@@ -154,6 +154,5 @@ The zip lands in `build/distributions/`.
   JetBrains may still change; hence 2026.2+.
 - The context window size isn't in the transcript; set `context_window` if yours isn't 1M.
 - Continuing after a usage limit needs a claude.ai subscription login (only those stops record when
-  the limit resets) and `script` to give `claude` a terminal. The macOS form of that command is
-  written but untested.
+  the limit resets).
 - Bash only: no native Windows support.
